@@ -20,6 +20,11 @@ HEADERS = {
     "Referer": "https://www.tiktok.com/",
 }
 
+YT_DLP_OPTS = [
+    "--no-warnings",
+    "--user-agent", UA,
+]
+
 
 def _parse_count(text: str) -> int:
     if not text:
@@ -43,7 +48,7 @@ def get_follower_count(username: str) -> int:
             f"https://www.tiktok.com/@{username}",
             headers=HEADERS,
             follow_redirects=True,
-            timeout=12,
+            timeout=15,
         )
         if r.status_code != 200:
             return -1
@@ -66,12 +71,12 @@ def get_user_videos(username: str, max_videos: int = 50) -> List[Dict]:
                 "--dump-json",
                 "--flat-playlist",
                 f"--playlist-end={max_videos}",
-                "--no-warnings",
+                *YT_DLP_OPTS,
                 f"https://www.tiktok.com/@{username}",
             ],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=90,
         )
         videos = []
         for line in result.stdout.strip().split("\n"):
@@ -99,7 +104,7 @@ def get_user_videos(username: str, max_videos: int = 50) -> List[Dict]:
 
 def analyze_user(
     username: str,
-    viral_threshold: int = 50_000,
+    viral_threshold: int = 10_000,
     max_videos: int = 50,
 ) -> Optional[Dict]:
     follower_count = get_follower_count(username)
@@ -120,3 +125,128 @@ def analyze_user(
         "top_videos": videos[:10],
         "tiktok_url": f"https://www.tiktok.com/@{username}",
     }
+
+
+def search_hashtag(hashtag: str, max_results: int = 30) -> List[str]:
+    """yt-dlp でハッシュタグページからユーザー名を取得"""
+    tag = hashtag.lstrip("#")
+    try:
+        result = subprocess.run(
+            [
+                "yt-dlp",
+                "--dump-json",
+                "--flat-playlist",
+                f"--playlist-end={max_results}",
+                *YT_DLP_OPTS,
+                f"https://www.tiktok.com/tag/{tag}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        usernames: List[str] = []
+        seen: set = set()
+        for line in result.stdout.strip().split("\n"):
+            if not line.startswith("{"):
+                continue
+            try:
+                d = json.loads(line)
+                uname = (
+                    d.get("uploader_id") or d.get("uploader") or
+                    d.get("channel_id") or d.get("channel") or ""
+                ).lstrip("@").strip()
+                if uname and uname not in seen and "." not in uname:
+                    seen.add(uname)
+                    usernames.append(uname)
+            except Exception:
+                continue
+        return usernames
+    except subprocess.TimeoutExpired:
+        print(f"[TikTok] ハッシュタグ検索タイムアウト #{tag}")
+        return []
+    except Exception as e:
+        print(f"[TikTok] ハッシュタグ検索エラー #{tag}: {e}")
+        return []
+
+
+def search_keyword(keyword: str, max_results: int = 30) -> List[str]:
+    """yt-dlp でキーワード検索ページからユーザー名を取得"""
+    try:
+        result = subprocess.run(
+            [
+                "yt-dlp",
+                "--dump-json",
+                "--flat-playlist",
+                f"--playlist-end={max_results}",
+                *YT_DLP_OPTS,
+                f"https://www.tiktok.com/search/video?q={keyword}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        usernames: List[str] = []
+        seen: set = set()
+        for line in result.stdout.strip().split("\n"):
+            if not line.startswith("{"):
+                continue
+            try:
+                d = json.loads(line)
+                uname = (
+                    d.get("uploader_id") or d.get("uploader") or
+                    d.get("channel_id") or d.get("channel") or ""
+                ).lstrip("@").strip()
+                if uname and uname not in seen and "." not in uname:
+                    seen.add(uname)
+                    usernames.append(uname)
+            except Exception:
+                continue
+        return usernames
+    except subprocess.TimeoutExpired:
+        print(f"[TikTok] キーワード検索タイムアウト: {keyword}")
+        return []
+    except Exception as e:
+        print(f"[TikTok] キーワード検索エラー: {keyword}: {e}")
+        return []
+
+
+def find_viral_accounts(
+    queries: List[str],
+    max_followers: int = 3000,
+    min_viral_videos: int = 3,
+    viral_threshold: int = 10_000,
+    is_hashtag: bool = True,
+) -> List[Dict]:
+    """ハッシュタグ/キーワードで候補収集 → 低フォロワー×バズアカウントを発掘"""
+    seen: set = set()
+    candidates: List[str] = []
+
+    for query in queries:
+        names = search_hashtag(query) if is_hashtag else search_keyword(query)
+        print(f"[TikTok] {'#' if is_hashtag else ''}{query} → {len(names)}件")
+        for name in names:
+            if name not in seen:
+                seen.add(name)
+                candidates.append(name)
+
+    print(f"[TikTok] 候補 {len(candidates)} 件 → 詳細分析開始...")
+    results = []
+
+    for uname in candidates:
+        profile = analyze_user(uname, viral_threshold=viral_threshold)
+        if not profile:
+            continue
+        followers = profile["follower_count"]
+        if followers != -1 and followers > max_followers:
+            print(f"  スキップ @{uname} フォロワー{followers:,}")
+            continue
+        if profile["viral_video_count"] >= min_viral_videos:
+            results.append(profile)
+            print(
+                f"  ✅ @{uname} "
+                f"フォロワー{followers:,} "
+                f"バズ{profile['viral_video_count']}本"
+            )
+
+    results.sort(key=lambda x: x["viral_video_count"], reverse=True)
+    return results

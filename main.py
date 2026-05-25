@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from scrapers.tiktok import analyze_user
+from scrapers.tiktok import analyze_user, find_viral_accounts
 from scrapers.instagram import InstagramScraper
 
 # ─── パターン分析ロジック ─────────────────────────────────────────
@@ -103,18 +103,26 @@ async def startup():
 
 
 # ─── リクエストモデル ─────────────────────────────────────────────
+class TikTokSearchReq(BaseModel):
+    queries: List[str]
+    is_hashtag: bool = True
+    max_followers: int = 3000
+    min_viral_videos: int = 3
+    viral_threshold: int = 10_000
+
+
 class TikTokUsersReq(BaseModel):
     usernames: List[str]
-    viral_threshold: int = 50_000
+    viral_threshold: int = 10_000
     min_viral_videos: int = 0
 
 class UserReq(BaseModel):
     username: str
-    viral_threshold: int = 50_000
+    viral_threshold: int = 10_000
 
 class PatternAnalysisReq(BaseModel):
     usernames: List[str]
-    viral_threshold: int = 50_000
+    viral_threshold: int = 10_000
 
 class InstagramSearchReq(BaseModel):
     hashtags: List[str]
@@ -124,6 +132,22 @@ class InstagramSearchReq(BaseModel):
 
 
 # ─── TikTok エンドポイント ────────────────────────────────────────
+@app.post("/api/tiktok/find-viral")
+async def tiktok_find_viral(req: TikTokSearchReq):
+    loop = asyncio.get_event_loop()
+    results = await loop.run_in_executor(
+        None,
+        lambda: find_viral_accounts(
+            queries=req.queries,
+            max_followers=req.max_followers,
+            min_viral_videos=req.min_viral_videos,
+            viral_threshold=req.viral_threshold,
+            is_hashtag=req.is_hashtag,
+        ),
+    )
+    return {"count": len(results), "accounts": results}
+
+
 @app.post("/api/tiktok/analyze-users")
 async def tiktok_analyze_users(req: TikTokUsersReq):
     loop = asyncio.get_event_loop()
@@ -276,15 +300,40 @@ button.run:disabled{opacity:.35;cursor:not-allowed}
 </header>
 <main>
   <div class="tabs">
-    <button class="tab active" onclick="sw('tt-manual')">TikTok 手動分析</button>
+    <button class="tab active" onclick="sw('tt-auto')">TikTok 自動発掘</button>
+    <button class="tab" onclick="sw('tt-manual')">TikTok 手動分析</button>
     <button class="tab" onclick="sw('tt-pattern')">🔥 バズパターン分析</button>
     <button class="tab" onclick="sw('tt-user')">TikTok ユーザー調査</button>
     <button class="tab" onclick="sw('ig-auto')">Instagram 発掘</button>
     <button class="tab" onclick="sw('ig-user')">Instagram ユーザー調査</button>
   </div>
 
+  <!-- TikTok 自動発掘 -->
+  <div id="panel-tt-auto" class="panel active">
+    <div class="card">
+      <h2>TikTok — ハッシュタグ/キーワードで自動発掘</h2>
+      <div class="tip">💡 yt-dlpでハッシュタグページからアカウントを自動収集して分析します。結果が出ない場合はバズ判定の再生数を下げてみてください。</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>検索クエリ（1行1件）</label>
+        <textarea id="tt-queries" placeholder="営業バイト&#10;大学生稼ぐ&#10;歩合制&#10;代理店求人&#10;未経験営業"></textarea>
+      </div>
+      <div class="toggle-row" style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="toggle-btn active" id="tt-tag-btn" onclick="setMode('tag')" style="padding:7px 14px;border-radius:7px;border:1px solid #fe2c55;cursor:pointer;font-size:12px;background:#1a0005;color:#fe2c55">ハッシュタグ</button>
+        <button class="toggle-btn" id="tt-kw-btn" onclick="setMode('kw')" style="padding:7px 14px;border-radius:7px;border:1px solid #333;cursor:pointer;font-size:12px;background:#0f0f0f;color:#888">キーワード</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>最大フォロワー数</label><input type="number" id="tt-max-f" value="3000"></div>
+        <div class="form-group"><label>最小バズ動画数</label><input type="number" id="tt-min-v" value="3"></div>
+        <div class="form-group"><label>バズ判定（再生数以上）</label><input type="number" id="tt-threshold" value="10000"></div>
+      </div>
+      <button class="run" id="tt-auto-btn" onclick="runAutoSearch()">🔍 発掘スタート</button>
+      <div class="status" id="tt-auto-status"></div>
+    </div>
+    <div id="tt-auto-results" class="results"></div>
+  </div>
+
   <!-- TikTok 手動分析 -->
-  <div id="panel-tt-manual" class="panel active">
+  <div id="panel-tt-manual" class="panel">
     <div class="card">
       <h2>TikTok — ユーザー名リスト一括分析</h2>
       <div class="tip">💡 TikTokで手動検索して見つけた @ユーザー名を貼り付けると、フォロワー数・バズ動画数を一括取得します。</div>
@@ -293,7 +342,7 @@ button.run:disabled{opacity:.35;cursor:not-allowed}
         <textarea id="tt-manual-users" placeholder="username1&#10;username2&#10;username3"></textarea>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>バズ判定（再生数以上）</label><input type="number" id="tt-manual-threshold" value="50000"></div>
+        <div class="form-group"><label>バズ判定（再生数以上）</label><input type="number" id="tt-manual-threshold" value="10000"></div>
         <div class="form-group"><label>最小バズ動画数（0=全表示）</label><input type="number" id="tt-manual-min" value="0"></div>
       </div>
       <button class="run" id="tt-manual-btn" onclick="runManualAnalysis()">📊 一括分析</button>
@@ -312,7 +361,7 @@ button.run:disabled{opacity:.35;cursor:not-allowed}
         <textarea id="pt-users" placeholder="username1&#10;username2&#10;username3&#10;username4&#10;username5" style="min-height:120px"></textarea>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>バズ判定（再生数以上）</label><input type="number" id="pt-threshold" value="50000"></div>
+        <div class="form-group"><label>バズ判定（再生数以上）</label><input type="number" id="pt-threshold" value="10000"></div>
       </div>
       <button class="run" id="pt-btn" onclick="runPatternAnalysis()">🔍 パターン分析スタート</button>
       <div class="status" id="pt-status"></div>
@@ -329,7 +378,7 @@ button.run:disabled{opacity:.35;cursor:not-allowed}
         <input type="text" id="tt-single-user" placeholder="username">
       </div>
       <div class="form-row">
-        <div class="form-group"><label>バズ判定（再生数以上）</label><input type="number" id="tt-single-threshold" value="50000"></div>
+        <div class="form-group"><label>バズ判定（再生数以上）</label><input type="number" id="tt-single-threshold" value="10000"></div>
       </div>
       <button class="run" id="tt-user-btn" onclick="runUserSearch()">📊 調査する</button>
       <div class="status" id="tt-user-status"></div>
@@ -372,12 +421,25 @@ button.run:disabled{opacity:.35;cursor:not-allowed}
 </main>
 
 <script>
-const TABS = ['tt-manual','tt-pattern','tt-user','ig-auto','ig-user'];
+let isHashtag = true;
+const TABS = ['tt-auto','tt-manual','tt-pattern','tt-user','ig-auto','ig-user'];
 
 function sw(name){
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',TABS[i]===name));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.getElementById('panel-'+name).classList.add('active');
+}
+function setMode(m){
+  isHashtag=m==='tag';
+  const tagBtn=document.getElementById('tt-tag-btn');
+  const kwBtn=document.getElementById('tt-kw-btn');
+  if(isHashtag){
+    tagBtn.style.cssText='padding:7px 14px;border-radius:7px;border:1px solid #fe2c55;cursor:pointer;font-size:12px;background:#1a0005;color:#fe2c55';
+    kwBtn.style.cssText='padding:7px 14px;border-radius:7px;border:1px solid #333;cursor:pointer;font-size:12px;background:#0f0f0f;color:#888';
+  }else{
+    kwBtn.style.cssText='padding:7px 14px;border-radius:7px;border:1px solid #fe2c55;cursor:pointer;font-size:12px;background:#1a0005;color:#fe2c55';
+    tagBtn.style.cssText='padding:7px 14px;border-radius:7px;border:1px solid #333;cursor:pointer;font-size:12px;background:#0f0f0f;color:#888';
+  }
 }
 function fmt(n){
   if(!n||n<0)return '?';
@@ -446,6 +508,31 @@ function renderIG(accounts, containerId){
           </div>`).join('')}
       </div>
     </div>`).join('');
+}
+
+async function runAutoSearch(){
+  const queries=document.getElementById('tt-queries').value.split('\\n').map(s=>s.trim()).filter(Boolean);
+  if(!queries.length)return alert('キーワードを入力してください');
+  const btn=document.getElementById('tt-auto-btn');
+  btn.disabled=true;
+  setStatus('tt-auto-status','yt-dlpで検索中... 数分かかります','running');
+  document.getElementById('tt-auto-results').innerHTML='';
+  try{
+    const res=await fetch('/api/tiktok/find-viral',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      queries,is_hashtag:isHashtag,
+      max_followers:+document.getElementById('tt-max-f').value,
+      min_viral_videos:+document.getElementById('tt-min-v').value,
+      viral_threshold:+document.getElementById('tt-threshold').value,
+    })});
+    const data=await res.json();
+    if(data.count===0){
+      setStatus('tt-auto-status','該当なし。バズ判定の再生数を下げるか、最小バズ動画数を0にして再試行','done');
+    }else{
+      setStatus('tt-auto-status',`✅ 完了 — ${data.count}件発見`,'done');
+    }
+    renderTT(data.accounts||[],'tt-auto-results');
+  }catch(e){setStatus('tt-auto-status','エラー: '+e.message,'error');}
+  finally{btn.disabled=false;}
 }
 
 async function runManualAnalysis(){
