@@ -1,31 +1,69 @@
 """
-TikTok Scraper — httpx + yt-dlp ハイブリッド検索
+TikTok Scraper — 多段検索（yt-dlp + httpx + JSON深層解析）
 """
 
 import json
 import re
 import subprocess
-from typing import Dict, List, Optional
+import time
+from typing import Dict, List, Optional, Set
 
 import httpx
 
-UA = (
+# ─── User-Agent 群 ────────────────────────────────────────────────
+UA_DESKTOP = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
-HEADERS = {
-    "User-Agent": UA,
-    "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Referer": "https://www.tiktok.com/",
-}
+UA_MOBILE = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+)
+UA_ANDROID = (
+    "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+)
 
-YT_DLP_OPTS = [
-    "--no-warnings",
-    "--user-agent", UA,
+UAS = [
+    ("desktop", UA_DESKTOP),
+    ("mobile", UA_MOBILE),
+    ("android", UA_ANDROID),
 ]
 
-USERNAME_RE = re.compile(r'^[a-zA-Z0-9_.]{2,24}$')
+
+def _headers(ua: str) -> dict:
+    return {
+        "User-Agent": ua,
+        "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Referer": "https://www.tiktok.com/",
+        "Cache-Control": "no-cache",
+    }
+
+
+HEADERS = _headers(UA_DESKTOP)
+YT_DLP_OPTS = ["--no-warnings", "--user-agent", UA_DESKTOP]
+
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9_.]{2,24}$")
+RESERVED_NAMES = {
+    "discover", "foryou", "following", "explore", "live", "search",
+    "tag", "music", "user", "video", "trending", "about", "login",
+    "signup", "embed", "share", "challenge", "feedback", "help", "legal",
+    "terms", "privacy", "community-guidelines", "creators", "business",
+    "ads", "effects", "stickers", "sounds", "media", "static", "node",
+    "passport", "verify", "feed", "tiktok", "www", "m", "vm",
+}
+
+
+def _valid_username(uname: str) -> bool:
+    if not uname:
+        return False
+    uname = uname.strip().lstrip("@")
+    if not USERNAME_RE.match(uname):
+        return False
+    if uname.lower() in RESERVED_NAMES:
+        return False
+    return True
 
 
 def _parse_count(text: str) -> int:
@@ -44,38 +82,30 @@ def _parse_count(text: str) -> int:
         return 0
 
 
-def _valid_username(uname: str) -> bool:
-    if not uname:
-        return False
-    if not USERNAME_RE.match(uname):
-        return False
-    # システム・予約名を除外
-    if uname.lower() in {"discover", "foryou", "following", "explore", "live", "search", "tag", "music", "user", "video", "trending"}:
-        return False
-    return True
-
-
+# ─── フォロワー数取得（複数UA試行） ───────────────────────────────
 def get_follower_count(username: str) -> int:
-    try:
-        r = httpx.get(
-            f"https://www.tiktok.com/@{username}",
-            headers=HEADERS,
-            follow_redirects=True,
-            timeout=15,
-        )
-        if r.status_code != 200:
-            return -1
-        m = re.search(r'"followerCount"\s*:\s*(\d+)', r.text)
-        if m:
-            return int(m.group(1))
-        m2 = re.search(r'([\d.,]+[万KM]?)\s*Followers', r.text)
-        if m2:
-            return _parse_count(m2.group(1))
-    except Exception as e:
-        print(f"[TikTok] フォロワー取得失敗 @{username}: {e}")
+    for ua_label, ua in UAS:
+        try:
+            r = httpx.get(
+                f"https://www.tiktok.com/@{username}",
+                headers=_headers(ua),
+                follow_redirects=True,
+                timeout=15,
+            )
+            if r.status_code != 200:
+                continue
+            m = re.search(r'"followerCount"\s*:\s*(\d+)', r.text)
+            if m:
+                return int(m.group(1))
+            m2 = re.search(r'([\d.,]+[万KM]?)\s*Followers', r.text)
+            if m2:
+                return _parse_count(m2.group(1))
+        except Exception:
+            continue
     return -1
 
 
+# ─── 動画一覧取得 ─────────────────────────────────────────────────
 def get_user_videos(username: str, max_videos: int = 50) -> List[Dict]:
     try:
         result = subprocess.run(
@@ -107,9 +137,6 @@ def get_user_videos(username: str, max_videos: int = 50) -> List[Dict]:
             except Exception:
                 continue
         return videos
-    except subprocess.TimeoutExpired:
-        print(f"[TikTok] yt-dlp タイムアウト @{username}")
-        return []
     except Exception as e:
         print(f"[TikTok] yt-dlp エラー @{username}: {e}")
         return []
@@ -140,27 +167,78 @@ def analyze_user(
     }
 
 
+# ─── ユーザー名抽出（JSON深層走査 + 正規表現） ───────────────────
+def _walk_json_for_usernames(obj, found: Set[str]) -> None:
+    """JSON構造を再帰的に探索してユーザー名を収集"""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in ("uniqueId", "unique_id", "authorUniqueId") and isinstance(v, str):
+                if _valid_username(v):
+                    found.add(v.lstrip("@"))
+            elif isinstance(v, (dict, list)):
+                _walk_json_for_usernames(v, found)
+    elif isinstance(obj, list):
+        for item in obj:
+            _walk_json_for_usernames(item, found)
+
+
 def _extract_usernames_from_html(text: str) -> List[str]:
-    """HTMLから複数のパターンでユーザー名を抽出"""
-    found = set()
-    # uniqueId パターン（TikTokのSIGI_STATE JSON内）
-    for uid in re.findall(r'"uniqueId"\s*:\s*"([^"]+)"', text):
-        if _valid_username(uid):
-            found.add(uid)
-    # author.unique_id パターン
-    for uid in re.findall(r'"unique_id"\s*:\s*"([^"]+)"', text):
-        if _valid_username(uid):
-            found.add(uid)
-    # /@username/ パターン（リンク内）
-    for uid in re.findall(r'/@([a-zA-Z0-9_.]+)[/?"#]', text):
-        if _valid_username(uid):
-            found.add(uid)
+    """HTMLから可能な限り多くのパターンでユーザー名を抽出"""
+    found: Set[str] = set()
+
+    # A. __UNIVERSAL_DATA_FOR_REHYDRATION__ (現行TikTok)
+    for m in re.finditer(
+        r'<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.+?)</script>',
+        text,
+        re.DOTALL,
+    ):
+        try:
+            _walk_json_for_usernames(json.loads(m.group(1)), found)
+        except Exception:
+            pass
+
+    # B. SIGI_STATE (旧形式)
+    for m in re.finditer(
+        r'<script[^>]*id="SIGI_STATE"[^>]*>(.+?)</script>',
+        text,
+        re.DOTALL,
+    ):
+        try:
+            _walk_json_for_usernames(json.loads(m.group(1)), found)
+        except Exception:
+            pass
+
+    # C. JSON-LD
+    for m in re.finditer(
+        r'<script[^>]*type="application/ld\+json"[^>]*>(.+?)</script>',
+        text,
+        re.DOTALL,
+    ):
+        try:
+            _walk_json_for_usernames(json.loads(m.group(1)), found)
+        except Exception:
+            pass
+
+    # D. 正規表現フォールバック（あらゆるパターン）
+    patterns = [
+        r'"uniqueId"\s*:\s*"([^"]+)"',
+        r'"unique_id"\s*:\s*"([^"]+)"',
+        r'"authorUniqueId"\s*:\s*"([^"]+)"',
+        r'/@([a-zA-Z0-9_.]+)[/?"#\s]',
+        r'href="[^"]*/@([a-zA-Z0-9_.]+)',
+        r'tiktok\.com/@([a-zA-Z0-9_.]+)',
+    ]
+    for pattern in patterns:
+        for uid in re.findall(pattern, text):
+            if _valid_username(uid):
+                found.add(uid.lstrip("@"))
+
     return list(found)
 
 
+# ─── yt-dlp 検索 ──────────────────────────────────────────────────
 def _search_yt_dlp(url: str, max_results: int = 30) -> List[str]:
-    """yt-dlp で指定URLからユーザー名を取得"""
-    found = set()
+    found: Set[str] = set()
     try:
         result = subprocess.run(
             [
@@ -186,6 +264,9 @@ def _search_yt_dlp(url: str, max_results: int = 30) -> List[str]:
                 ).lstrip("@").strip()
                 if _valid_username(uname):
                     found.add(uname)
+                # 関連動画のauthorも抽出
+                if "entries" in d:
+                    _walk_json_for_usernames(d["entries"], found)
             except Exception:
                 continue
     except subprocess.TimeoutExpired:
@@ -195,68 +276,90 @@ def _search_yt_dlp(url: str, max_results: int = 30) -> List[str]:
     return list(found)
 
 
+# ─── httpx 検索（複数UA試行） ─────────────────────────────────────
 def _search_httpx(url: str) -> List[str]:
-    """httpx でHTMLを取得しユーザー名を抽出"""
-    try:
-        r = httpx.get(url, headers=HEADERS, follow_redirects=True, timeout=20)
-        if r.status_code == 200:
-            return _extract_usernames_from_html(r.text)
-    except Exception as e:
-        print(f"[TikTok] httpx エラー {url}: {e}")
-    return []
+    """各UAで試行して最も多くの結果が取れたものを採用"""
+    best: List[str] = []
+    for ua_label, ua in UAS:
+        try:
+            r = httpx.get(
+                url,
+                headers=_headers(ua),
+                follow_redirects=True,
+                timeout=20,
+            )
+            if r.status_code == 200:
+                names = _extract_usernames_from_html(r.text)
+                if len(names) > len(best):
+                    best = names
+                if len(best) >= 10:
+                    break  # 十分取れたら次のURLへ
+            time.sleep(0.3)
+        except Exception:
+            continue
+    return best
 
 
+# ─── メイン検索関数 ───────────────────────────────────────────────
 def search_users(query: str, max_results: int = 30) -> List[str]:
     """
-    1つのクエリ（#付き/なし両対応）から複数の方法で
-    ユーザー名を収集して統合
+    1つのクエリ（#付き/なし両対応）から複数の方法を駆使して
+    ユーザー名を収集
     """
     q = query.lstrip("#").strip()
     if not q:
         return []
 
-    found = set()
+    found: Set[str] = set()
 
-    # 方法1: yt-dlp でハッシュタグページ
-    tag_url = f"https://www.tiktok.com/tag/{q}"
-    yt_tag = _search_yt_dlp(tag_url, max_results)
-    found.update(yt_tag)
-    print(f"[TikTok] yt-dlp tag/{q}: +{len(yt_tag)}件 (累計{len(found)})")
+    # 試行するURLパターン
+    url_candidates = [
+        ("tag", f"https://www.tiktok.com/tag/{q}"),
+        ("discover", f"https://www.tiktok.com/discover/{q}"),
+        ("search-video", f"https://www.tiktok.com/search/video?q={q}"),
+        ("search-user", f"https://www.tiktok.com/search/user?q={q}"),
+        ("search", f"https://www.tiktok.com/search?q={q}"),
+    ]
 
-    # 方法2: httpx でハッシュタグページのHTML
-    httpx_tag = _search_httpx(tag_url)
-    new_count = len(set(httpx_tag) - found)
-    found.update(httpx_tag)
-    print(f"[TikTok] httpx tag/{q}: +{new_count}件 (累計{len(found)})")
+    # 1. yt-dlp でタグページ + discoverページ
+    for label, url in url_candidates[:2]:
+        names = _search_yt_dlp(url, max_results)
+        before = len(found)
+        found.update(names)
+        if len(found) > before:
+            print(f"[TikTok] yt-dlp {label}: +{len(found) - before}件 (累計{len(found)})")
 
-    # 方法3: httpx で検索ページのHTML
-    search_url = f"https://www.tiktok.com/search?q={q}"
-    httpx_search = _search_httpx(search_url)
-    new_count = len(set(httpx_search) - found)
-    found.update(httpx_search)
-    print(f"[TikTok] httpx search?q={q}: +{new_count}件 (累計{len(found)})")
+    # 2. httpx で全URLを試行
+    for label, url in url_candidates:
+        names = _search_httpx(url)
+        before = len(found)
+        found.update(names)
+        if len(found) > before:
+            print(f"[TikTok] httpx {label}: +{len(found) - before}件 (累計{len(found)})")
 
+    print(f"[TikTok] '{query}' → 最終 {len(found)} 件のユニークユーザー")
     return list(found)
 
 
+# ─── バズアカウント発掘 ───────────────────────────────────────────
 def find_viral_accounts(
     queries: List[str],
     max_followers: int = 3000,
     min_viral_videos: int = 3,
     viral_threshold: int = 10_000,
-    **kwargs,  # 後方互換のためis_hashtagを無視
+    **kwargs,
 ) -> List[Dict]:
-    """低フォロワー×バズ動画多数のアカウントを発掘"""
-    seen: set = set()
+    """検索ワードから低フォロワー×バズ動画多数のアカウントを発掘"""
+    seen: Set[str] = set()
     candidates: List[str] = []
 
     for query in queries:
         names = search_users(query)
-        print(f"[TikTok] '{query}' → {len(names)}件")
         for name in names:
             if name not in seen:
                 seen.add(name)
                 candidates.append(name)
+        time.sleep(0.5)
 
     print(f"[TikTok] 候補合計 {len(candidates)} 件 → 詳細分析開始...")
     results = []
@@ -267,7 +370,6 @@ def find_viral_accounts(
             continue
         followers = profile["follower_count"]
         if followers != -1 and followers > max_followers:
-            print(f"  スキップ @{uname} フォロワー{followers:,}")
             continue
         if profile["viral_video_count"] >= min_viral_videos:
             results.append(profile)
