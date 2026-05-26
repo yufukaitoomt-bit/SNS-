@@ -147,6 +147,7 @@ def analyze_user(
     viral_threshold: int = 10_000,
     max_videos: int = 50,
 ) -> Optional[Dict]:
+    import math
     follower_count = get_follower_count(username)
     videos = get_user_videos(username, max_videos=max_videos)
 
@@ -156,6 +157,35 @@ def analyze_user(
     videos.sort(key=lambda v: v["play_count"], reverse=True)
     viral = [v for v in videos if v["play_count"] >= viral_threshold]
 
+    # ─── 追加指標の計算 ────────────────────────────────────────
+    total_plays = sum(v["play_count"] for v in videos)
+    total_likes = sum(v["like_count"] for v in videos)
+    avg_plays = total_plays // len(videos) if videos else 0
+    avg_likes = total_likes // len(videos) if videos else 0
+
+    # エンゲージメント率（いいね / 再生 の平均）
+    rates = []
+    for v in videos:
+        if v["play_count"] > 0:
+            rates.append(v["like_count"] / v["play_count"])
+    engagement_rate = round(sum(rates) / len(rates) * 100, 2) if rates else 0.0
+
+    # バズ率
+    viral_rate = round(len(viral) / len(videos) * 100, 1) if videos else 0.0
+
+    # 平均バズ再生数
+    avg_viral_plays = (
+        sum(v["play_count"] for v in viral) // len(viral) if viral else 0
+    )
+
+    # フォロワー対再生比（少フォロワーで爆伸びしてるか）
+    safe_followers = max(follower_count, 100) if follower_count > 0 else 100
+    plays_per_follower = round(avg_plays / safe_followers, 2)
+
+    # 総合スコア: バズ動画数 × √効率
+    efficiency = avg_viral_plays / safe_followers if avg_viral_plays else 0
+    score = round(len(viral) * math.sqrt(efficiency) * 10)
+
     return {
         "username": username,
         "follower_count": follower_count,
@@ -164,6 +194,14 @@ def analyze_user(
         "viral_videos": viral[:10],
         "top_videos": videos[:10],
         "tiktok_url": f"https://www.tiktok.com/@{username}",
+        # 追加指標
+        "avg_plays": avg_plays,
+        "avg_likes": avg_likes,
+        "avg_viral_plays": avg_viral_plays,
+        "engagement_rate": engagement_rate,  # %
+        "viral_rate": viral_rate,  # %
+        "plays_per_follower": plays_per_follower,
+        "score": score,
     }
 
 

@@ -13,6 +13,37 @@ from scrapers.instagram import InstagramScraper
 # ─── パターン分析ロジック ─────────────────────────────────────────
 JP_STOP = {"の","に","は","を","が","で","と","た","し","て","い","な","も","こ","れ","あ","そ","る","ん","か","ら","く","さ","っ","つ","わ","よ","ね","から","です","ます","した","ある","いる","ない","する","なの","これ","それ","あれ","この","その","あの","で","も"}
 
+EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport & map symbols
+    "\U0001F1E0-\U0001F1FF"  # flags
+    "\U00002500-\U00002BEF"
+    "\U00002702-\U000027B0"
+    "\U000024C2-\U0001F251"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA00-\U0001FA6F"
+    "\U0001FA70-\U0001FAFF"
+    "\U0001F018-\U0001F270"
+    "]"
+)
+
+EMPHASIS_WORDS = [
+    "絶対", "ガチ", "ガチで", "まじ", "マジ", "マジで", "やばい", "ヤバい",
+    "ヤバ", "神", "最強", "最高", "鬼", "超", "激", "ぶっちゃけ", "本気", "本音",
+    "天才", "覚醒", "革命", "衝撃", "禁断", "極", "限界",
+]
+
+QUESTION_WORDS = [
+    "知ってる", "知らない", "なぜ", "どう", "どれ", "どこ", "なに", "何",
+    "いつ", "誰", "教えて", "ですか", "ません", "かな",
+]
+
+NUMBER_RE = re.compile(r"\d+")
+JP_NUMBER_PATTERNS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
+
+
 def _tokenize(text: str) -> List[str]:
     text = re.sub(r'https?://\S+', '', text)
     hashtags = re.findall(r'#[\w぀-ヿ一-鿿]+', text)
@@ -22,9 +53,49 @@ def _tokenize(text: str) -> List[str]:
     jp_words = [w for w in jp_words if w not in JP_STOP]
     return hashtags + en_words + jp_words
 
+
+def _has_number(text: str) -> bool:
+    if NUMBER_RE.search(text):
+        return True
+    return any(n in text for n in JP_NUMBER_PATTERNS)
+
+
+def _is_question(text: str) -> bool:
+    if "?" in text or "？" in text:
+        return True
+    return any(w in text for w in QUESTION_WORDS)
+
+
+def _length_bucket(text: str) -> str:
+    n = len(text)
+    if n < 15:
+        return "短い (15文字未満)"
+    if n < 35:
+        return "中 (15-35文字)"
+    if n < 60:
+        return "長め (35-60文字)"
+    return "超長 (60文字以上)"
+
+
+def _play_bucket(n: int) -> str:
+    if n < 1_000:
+        return "0-1K"
+    if n < 10_000:
+        return "1K-10K"
+    if n < 100_000:
+        return "10K-100K"
+    if n < 1_000_000:
+        return "100K-1M"
+    if n < 10_000_000:
+        return "1M-10M"
+    return "10M+"
+
+
+PLAY_BUCKET_ORDER = ["0-1K", "1K-10K", "10K-100K", "100K-1M", "1M-10M", "10M+"]
+
 def analyze_patterns(accounts: List[dict]) -> dict:
     all_viral_titles = []
-    hook_patterns = []
+    cross_account_videos = []  # 全アカウント横断のバズ動画
     account_summary = []
     total_viral = 0
 
@@ -34,22 +105,32 @@ def analyze_patterns(accounts: List[dict]) -> dict:
         titles = [v["title"] for v in viral if v.get("title")]
         all_viral_titles.extend(titles)
 
-        for t in titles[:5]:
-            if t and len(t) >= 5:
-                hook_patterns.append(t[:20])
+        for v in viral:
+            cross_account_videos.append({
+                "username": acc["username"],
+                "title": v.get("title", ""),
+                "play_count": v["play_count"],
+                "like_count": v.get("like_count", 0),
+                "url": v.get("url", ""),
+                "tiktok_url": acc.get("tiktok_url", f"https://www.tiktok.com/@{acc['username']}"),
+            })
 
-        avg_plays = (
-            sum(v["play_count"] for v in viral) // len(viral) if viral else 0
-        )
         account_summary.append({
             "username": acc["username"],
             "follower_count": acc["follower_count"],
+            "video_count": acc.get("video_count", 0),
             "viral_video_count": acc["viral_video_count"],
-            "avg_viral_plays": avg_plays,
+            "avg_plays": acc.get("avg_plays", 0),
+            "avg_viral_plays": acc.get("avg_viral_plays", 0),
+            "engagement_rate": acc.get("engagement_rate", 0),
+            "viral_rate": acc.get("viral_rate", 0),
+            "plays_per_follower": acc.get("plays_per_follower", 0),
+            "score": acc.get("score", 0),
             "top_video_plays": viral[0]["play_count"] if viral else 0,
             "tiktok_url": acc.get("tiktok_url", f"https://www.tiktok.com/@{acc['username']}"),
         })
 
+    # ─── キーワード・ハッシュタグ集計 ────────────────────────
     all_tokens = []
     all_hashtags = []
     for title in all_viral_titles:
@@ -62,6 +143,7 @@ def analyze_patterns(accounts: List[dict]) -> dict:
     top_keywords = [{"word": w, "count": c} for w, c in Counter(all_tokens).most_common(20)]
     top_hashtags = [{"tag": t, "count": c} for t, c in Counter(all_hashtags).most_common(15)]
 
+    # ─── フック例 ────────────────────────────────────────────
     unique_hooks = []
     seen_hooks = set()
     for title in all_viral_titles:
@@ -72,19 +154,95 @@ def analyze_patterns(accounts: List[dict]) -> dict:
         if len(unique_hooks) >= 12:
             break
 
+    # ─── 訴求パターン分析 ────────────────────────────────────
+    total_titles = max(len(all_viral_titles), 1)
+    number_count = sum(1 for t in all_viral_titles if _has_number(t))
+    question_count = sum(1 for t in all_viral_titles if _is_question(t))
+
+    appeal_patterns = {
+        "数字を含むタイトル": {
+            "count": number_count,
+            "rate": round(number_count / total_titles * 100, 1),
+        },
+        "疑問形タイトル": {
+            "count": question_count,
+            "rate": round(question_count / total_titles * 100, 1),
+        },
+    }
+
+    # ─── 強調表現の頻度 ──────────────────────────────────────
+    emphasis_freq = Counter()
+    for title in all_viral_titles:
+        for word in EMPHASIS_WORDS:
+            if word in title:
+                emphasis_freq[word] += 1
+    top_emphasis = [
+        {"word": w, "count": c} for w, c in emphasis_freq.most_common(10)
+    ]
+
+    # ─── 絵文字の頻度 ────────────────────────────────────────
+    emoji_freq = Counter()
+    for title in all_viral_titles:
+        for emoji in EMOJI_RE.findall(title):
+            emoji_freq[emoji] += 1
+    top_emojis = [
+        {"emoji": e, "count": c} for e, c in emoji_freq.most_common(15)
+    ]
+    emoji_usage_rate = round(
+        sum(1 for t in all_viral_titles if EMOJI_RE.search(t)) / total_titles * 100,
+        1,
+    )
+
+    # ─── タイトル文字数分布 ──────────────────────────────────
+    length_buckets = Counter(_length_bucket(t) for t in all_viral_titles)
+    title_length_dist = [
+        {"bucket": b, "count": length_buckets.get(b, 0)}
+        for b in ["短い (15文字未満)", "中 (15-35文字)", "長め (35-60文字)", "超長 (60文字以上)"]
+    ]
+    avg_title_length = (
+        sum(len(t) for t in all_viral_titles) // total_titles
+    )
+
+    # ─── 再生数分布 ──────────────────────────────────────────
     all_plays = []
     for acc in accounts:
         for v in (acc.get("viral_videos") or []):
             all_plays.append(v["play_count"])
+    play_dist_counter = Counter(_play_bucket(p) for p in all_plays)
+    play_distribution = [
+        {"bucket": b, "count": play_dist_counter.get(b, 0)}
+        for b in PLAY_BUCKET_ORDER
+    ]
+
+    # ─── 横断ベストバズ動画TOP10 ─────────────────────────────
+    cross_top_videos = sorted(
+        cross_account_videos, key=lambda v: v["play_count"], reverse=True
+    )[:10]
+
+    # ─── スコアランキング ────────────────────────────────────
+    score_ranking = sorted(
+        account_summary, key=lambda a: a["score"], reverse=True
+    )
 
     return {
         "account_count": len(accounts),
         "total_viral_videos": total_viral,
         "avg_viral_plays": sum(all_plays) // len(all_plays) if all_plays else 0,
+        # 既存
         "top_keywords": top_keywords,
         "top_hashtags": top_hashtags,
         "hook_examples": unique_hooks,
         "account_summary": sorted(account_summary, key=lambda x: x["viral_video_count"], reverse=True),
+        # 新規追加
+        "appeal_patterns": appeal_patterns,
+        "top_emphasis": top_emphasis,
+        "top_emojis": top_emojis,
+        "emoji_usage_rate": emoji_usage_rate,
+        "title_length_dist": title_length_dist,
+        "avg_title_length": avg_title_length,
+        "play_distribution": play_distribution,
+        "cross_top_videos": cross_top_videos,
+        "score_ranking": score_ranking,
     }
 
 
@@ -446,6 +604,7 @@ function renderTT(accounts, containerId){
           <div class="username">
             <a href="${a.tiktok_url}" target="_blank">@${a.username}</a>
           </div>
+          ${a.score?`<div style="margin-top:4px;font-size:11px;color:#888">スコア <span style="color:#fe2c55;font-weight:700">${a.score.toLocaleString()}</span></div>`:''}
         </div>
         <span class="vbadge">🔥 バズ${a.viral_video_count}本</span>
       </div>
@@ -453,6 +612,10 @@ function renderTT(accounts, containerId){
         <div class="metric"><div class="metric-val">${fmt(a.follower_count)}</div><div class="metric-label">フォロワー</div></div>
         <div class="metric"><div class="metric-val">${a.video_count}</div><div class="metric-label">動画数</div></div>
         <div class="metric"><div class="metric-val">${a.viral_video_count}</div><div class="metric-label">バズ動画</div></div>
+        <div class="metric"><div class="metric-val">${fmt(a.avg_plays||0)}</div><div class="metric-label">平均再生</div></div>
+        <div class="metric"><div class="metric-val">${a.viral_rate||0}%</div><div class="metric-label">バズ率</div></div>
+        <div class="metric"><div class="metric-val">${a.engagement_rate||0}%</div><div class="metric-label">エンゲ率</div></div>
+        <div class="metric"><div class="metric-val">${a.plays_per_follower||0}x</div><div class="metric-label">再生/F</div></div>
       </div>
       <div class="vlist">
         ${(a.viral_videos||a.top_videos||[]).slice(0,5).map(v=>`
@@ -576,47 +739,176 @@ async function runPatternAnalysis(){
 
 function renderPattern(d, containerId){
   const el=document.getElementById(containerId);
-  const fmtPlays = n => n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?Math.round(n/1e4)+'万':n>=1e3?(n/1e3).toFixed(1)+'K':n.toLocaleString();
+  const fmtPlays = n => n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?Math.round(n/1e4)+'万':n>=1e3?(n/1e3).toFixed(1)+'K':(n||0).toLocaleString();
+  const sectionTitle = txt => `<div style="font-size:12px;font-weight:700;color:#888;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">${txt}</div>`;
+
+  const maxPlayBucket = Math.max(...d.play_distribution.map(p=>p.count), 1);
+  const maxLenBucket = Math.max(...d.title_length_dist.map(t=>t.count), 1);
 
   el.innerHTML=`
+    <!-- サマリー -->
     <div class="rc" style="border-color:#fe2c55">
       <div style="display:flex;gap:24px;flex-wrap:wrap;padding:4px 0">
         <div class="metric"><div class="metric-val">${d.account_count}</div><div class="metric-label">分析アカウント数</div></div>
         <div class="metric"><div class="metric-val">${d.total_viral_videos}</div><div class="metric-label">バズ動画合計</div></div>
         <div class="metric"><div class="metric-val">${fmtPlays(d.avg_viral_plays)}</div><div class="metric-label">平均バズ再生数</div></div>
+        <div class="metric"><div class="metric-val">${d.avg_title_length}</div><div class="metric-label">平均タイトル文字数</div></div>
+        <div class="metric"><div class="metric-val">${d.emoji_usage_rate}%</div><div class="metric-label">絵文字使用率</div></div>
       </div>
     </div>
 
+    <!-- 🏆 スコアランキング -->
     <div class="rc">
-      <div style="font-size:12px;font-weight:700;color:#888;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">アカウント別比較</div>
+      ${sectionTitle('🏆 真似すべきアカウント・スコアランキング')}
+      <div style="font-size:11px;color:#666;margin-bottom:10px">＝ バズ動画数 × √(平均バズ再生÷フォロワー) × 10。少フォロワーで爆伸びしてるアカウントほど高スコア。</div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead>
             <tr style="color:#666;border-bottom:1px solid #2a2a2a">
+              <th style="text-align:left;padding:6px 8px">順位</th>
               <th style="text-align:left;padding:6px 8px">アカウント</th>
+              <th style="text-align:right;padding:6px 8px">スコア</th>
               <th style="text-align:right;padding:6px 8px">フォロワー</th>
-              <th style="text-align:right;padding:6px 8px">バズ動画</th>
-              <th style="text-align:right;padding:6px 8px">平均再生</th>
-              <th style="text-align:right;padding:6px 8px">最高再生</th>
+              <th style="text-align:right;padding:6px 8px">バズ数</th>
+              <th style="text-align:right;padding:6px 8px">平均バズ再生</th>
             </tr>
           </thead>
           <tbody>
-            ${d.account_summary.map(a=>`
-              <tr style="border-bottom:1px solid #1f1f1f">
+            ${d.score_ranking.map((a,i)=>`
+              <tr style="border-bottom:1px solid #1f1f1f;background:${i===0?'#2a0a14':i<3?'#1a0508':'transparent'}">
+                <td style="padding:7px 8px;color:${i===0?'#ffd700':i<3?'#fe2c55':'#666'};font-weight:700">${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)}</td>
                 <td style="padding:7px 8px"><a href="${a.tiktok_url}" target="_blank" style="color:#fe2c55;text-decoration:none;font-weight:600">@${a.username}</a></td>
+                <td style="text-align:right;padding:7px 8px;color:#fe2c55;font-weight:800">${(a.score||0).toLocaleString()}</td>
                 <td style="text-align:right;padding:7px 8px;color:#bbb">${fmtPlays(a.follower_count)}</td>
-                <td style="text-align:right;padding:7px 8px;color:#fe2c55;font-weight:700">${a.viral_video_count}本</td>
+                <td style="text-align:right;padding:7px 8px;color:#bbb">${a.viral_video_count}</td>
                 <td style="text-align:right;padding:7px 8px;color:#bbb">${fmtPlays(a.avg_viral_plays)}</td>
-                <td style="text-align:right;padding:7px 8px;color:#bbb">${fmtPlays(a.top_video_plays)}</td>
               </tr>`).join('')}
           </tbody>
         </table>
       </div>
     </div>
 
+    <!-- アカウント別比較（詳細指標つき） -->
+    <div class="rc">
+      ${sectionTitle('アカウント別比較（詳細指標）')}
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead>
+            <tr style="color:#666;border-bottom:1px solid #2a2a2a">
+              <th style="text-align:left;padding:6px 8px">アカウント</th>
+              <th style="text-align:right;padding:6px 8px">フォロワー</th>
+              <th style="text-align:right;padding:6px 8px">動画数</th>
+              <th style="text-align:right;padding:6px 8px">バズ数</th>
+              <th style="text-align:right;padding:6px 8px">バズ率</th>
+              <th style="text-align:right;padding:6px 8px">平均再生</th>
+              <th style="text-align:right;padding:6px 8px">エンゲ率</th>
+              <th style="text-align:right;padding:6px 8px">再生/F比</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${d.account_summary.map(a=>`
+              <tr style="border-bottom:1px solid #1f1f1f">
+                <td style="padding:6px 8px"><a href="${a.tiktok_url}" target="_blank" style="color:#fe2c55;text-decoration:none;font-weight:600">@${a.username}</a></td>
+                <td style="text-align:right;padding:6px 8px;color:#bbb">${fmtPlays(a.follower_count)}</td>
+                <td style="text-align:right;padding:6px 8px;color:#bbb">${a.video_count}</td>
+                <td style="text-align:right;padding:6px 8px;color:#fe2c55;font-weight:700">${a.viral_video_count}</td>
+                <td style="text-align:right;padding:6px 8px;color:#bbb">${a.viral_rate}%</td>
+                <td style="text-align:right;padding:6px 8px;color:#bbb">${fmtPlays(a.avg_plays)}</td>
+                <td style="text-align:right;padding:6px 8px;color:#60b0ff">${a.engagement_rate}%</td>
+                <td style="text-align:right;padding:6px 8px;color:${a.plays_per_follower>=10?'#40d080':'#bbb'};font-weight:${a.plays_per_follower>=10?'700':'400'}">${a.plays_per_follower}x</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 🔥 横断ベストバズ動画TOP10 -->
+    <div class="rc">
+      ${sectionTitle('🔥 全アカウント横断・ベストバズ動画 TOP10')}
+      ${d.cross_top_videos.map((v,i)=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #222">
+          <span style="color:${i<3?'#fe2c55':'#555'};font-size:13px;font-weight:700;width:24px;text-align:right">${i+1}</span>
+          <div style="flex:1;min-width:0">
+            <div style="color:#f0f0f0;font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${v.title||'(タイトルなし)'}</div>
+            <a href="${v.tiktok_url}" target="_blank" style="color:#888;font-size:11px;text-decoration:none">@${v.username}</a>
+          </div>
+          <span style="color:#fe2c55;font-weight:700;font-size:13px;white-space:nowrap">▶ ${fmtPlays(v.play_count)}</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- 📊 再生数分布 -->
+    <div class="rc">
+      ${sectionTitle('📊 バズ動画の再生数分布')}
+      ${d.play_distribution.map(p=>`
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+          <span style="color:#888;font-size:11px;width:70px">${p.bucket}</span>
+          <div style="flex:1;background:#111;border-radius:4px;overflow:hidden">
+            <div style="background:linear-gradient(90deg,#fe2c55,#7a0020);width:${(p.count/maxPlayBucket)*100}%;height:20px;display:flex;align-items:center;padding:0 8px">
+              ${p.count?`<span style="font-size:11px;color:#fff;font-weight:700">${p.count}</span>`:''}
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- 🎯 訴求パターン + 📝 文字数分布 -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div class="rc">
-        <div style="font-size:12px;font-weight:700;color:#888;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">よく使われるキーワード</div>
+        ${sectionTitle('🎯 訴求パターン')}
+        ${Object.entries(d.appeal_patterns).map(([k,v])=>`
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+              <span style="color:#bbb;font-size:13px">${k}</span>
+              <span style="color:#fe2c55;font-weight:700;font-size:13px">${v.rate}%</span>
+            </div>
+            <div style="background:#111;border-radius:4px;overflow:hidden">
+              <div style="background:linear-gradient(90deg,#fe2c55,#7a0020);width:${v.rate}%;height:8px"></div>
+            </div>
+            <div style="color:#555;font-size:11px;margin-top:2px">${v.count}本 / ${d.total_viral_videos}本</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="rc">
+        ${sectionTitle('📝 タイトル文字数分布')}
+        ${d.title_length_dist.map(t=>`
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+            <span style="color:#888;font-size:11px;width:120px">${t.bucket}</span>
+            <div style="flex:1;background:#111;border-radius:4px;overflow:hidden">
+              <div style="background:linear-gradient(90deg,#60b0ff,#1a3a5c);width:${(t.count/maxLenBucket)*100}%;height:18px;display:flex;align-items:center;padding:0 6px">
+                ${t.count?`<span style="font-size:10px;color:#fff;font-weight:700">${t.count}</span>`:''}
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- 💥 強調表現 + 😀 絵文字 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="rc">
+        ${sectionTitle('💥 よく使われる強調表現')}
+        ${d.top_emphasis.length ? d.top_emphasis.map((e,i)=>`
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="color:#555;font-size:11px;width:18px;text-align:right">${i+1}</span>
+            <span style="flex:1;font-size:13px;color:#f0c040">${e.word}</span>
+            <span style="color:#fe2c55;font-weight:700;font-size:12px">${e.count}回</span>
+          </div>`).join('') : '<div style="color:#444;font-size:12px">強調表現なし</div>'}
+      </div>
+      <div class="rc">
+        ${sectionTitle('😀 よく使われる絵文字')}
+        ${d.top_emojis.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px">${d.top_emojis.map(e=>`
+          <div style="background:#111;border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px">
+            <span style="font-size:18px">${e.emoji}</span>
+            <span style="color:#fe2c55;font-weight:700;font-size:12px">${e.count}</span>
+          </div>`).join('')}</div>` : '<div style="color:#444;font-size:12px">絵文字なし</div>'}
+      </div>
+    </div>
+
+    <!-- キーワード + ハッシュタグ -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="rc">
+        ${sectionTitle('よく使われるキーワード')}
         ${d.top_keywords.length ? d.top_keywords.map((k,i)=>`
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
             <span style="color:#555;font-size:11px;width:18px;text-align:right">${i+1}</span>
@@ -629,7 +921,7 @@ function renderPattern(d, containerId){
           </div>`).join('') : '<div style="color:#444;font-size:12px">データなし</div>'}
       </div>
       <div class="rc">
-        <div style="font-size:12px;font-weight:700;color:#888;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">よく使われるハッシュタグ</div>
+        ${sectionTitle('よく使われるハッシュタグ')}
         ${d.top_hashtags.length ? d.top_hashtags.map((t,i)=>`
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
             <span style="color:#555;font-size:11px;width:18px;text-align:right">${i+1}</span>
@@ -639,8 +931,9 @@ function renderPattern(d, containerId){
       </div>
     </div>
 
+    <!-- バズ動画の冒頭パターン -->
     <div class="rc">
-      <div style="font-size:12px;font-weight:700;color:#888;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">バズ動画の冒頭パターン（フック例）</div>
+      ${sectionTitle('💡 バズ動画の冒頭パターン（フック例）')}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         ${d.hook_examples.map(h=>`
           <div style="background:#111;border-radius:8px;padding:10px 12px;border-left:3px solid #fe2c55">
