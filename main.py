@@ -105,7 +105,6 @@ async def startup():
 # ─── リクエストモデル ─────────────────────────────────────────────
 class TikTokSearchReq(BaseModel):
     queries: List[str]
-    is_hashtag: bool = True
     max_followers: int = 3000
     min_viral_videos: int = 3
     viral_threshold: int = 10_000
@@ -142,7 +141,6 @@ async def tiktok_find_viral(req: TikTokSearchReq):
             max_followers=req.max_followers,
             min_viral_videos=req.min_viral_videos,
             viral_threshold=req.viral_threshold,
-            is_hashtag=req.is_hashtag,
         ),
     )
     return {"count": len(results), "accounts": results}
@@ -311,15 +309,11 @@ button.run:disabled{opacity:.35;cursor:not-allowed}
   <!-- TikTok 自動発掘 -->
   <div id="panel-tt-auto" class="panel active">
     <div class="card">
-      <h2>TikTok — ハッシュタグ/キーワードで自動発掘</h2>
-      <div class="tip">💡 yt-dlpでハッシュタグページからアカウントを自動収集して分析します。結果が出ない場合はバズ判定の再生数を下げてみてください。</div>
+      <h2>TikTok — キーワード/ハッシュタグで自動発掘</h2>
+      <div class="tip">💡 キーワード単体でも `#` 付きでもOK。タグページ・検索ページの両方から候補を収集します。結果が出ない場合はバズ判定の再生数を下げてください。</div>
       <div class="form-group" style="margin-bottom:10px">
-        <label>検索クエリ（1行1件）</label>
-        <textarea id="tt-queries" placeholder="営業バイト&#10;大学生稼ぐ&#10;歩合制&#10;代理店求人&#10;未経験営業"></textarea>
-      </div>
-      <div class="toggle-row" style="display:flex;gap:8px;margin-bottom:10px">
-        <button class="toggle-btn active" id="tt-tag-btn" onclick="setMode('tag')" style="padding:7px 14px;border-radius:7px;border:1px solid #fe2c55;cursor:pointer;font-size:12px;background:#1a0005;color:#fe2c55">ハッシュタグ</button>
-        <button class="toggle-btn" id="tt-kw-btn" onclick="setMode('kw')" style="padding:7px 14px;border-radius:7px;border:1px solid #333;cursor:pointer;font-size:12px;background:#0f0f0f;color:#888">キーワード</button>
+        <label>検索ワード（1行1件、#付きでもOK）</label>
+        <textarea id="tt-queries" placeholder="ファッション&#10;#営業バイト&#10;大学生 稼ぐ&#10;#代理店求人"></textarea>
       </div>
       <div class="form-row">
         <div class="form-group"><label>最大フォロワー数</label><input type="number" id="tt-max-f" value="3000"></div>
@@ -421,25 +415,12 @@ button.run:disabled{opacity:.35;cursor:not-allowed}
 </main>
 
 <script>
-let isHashtag = true;
 const TABS = ['tt-auto','tt-manual','tt-pattern','tt-user','ig-auto','ig-user'];
 
 function sw(name){
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',TABS[i]===name));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.getElementById('panel-'+name).classList.add('active');
-}
-function setMode(m){
-  isHashtag=m==='tag';
-  const tagBtn=document.getElementById('tt-tag-btn');
-  const kwBtn=document.getElementById('tt-kw-btn');
-  if(isHashtag){
-    tagBtn.style.cssText='padding:7px 14px;border-radius:7px;border:1px solid #fe2c55;cursor:pointer;font-size:12px;background:#1a0005;color:#fe2c55';
-    kwBtn.style.cssText='padding:7px 14px;border-radius:7px;border:1px solid #333;cursor:pointer;font-size:12px;background:#0f0f0f;color:#888';
-  }else{
-    kwBtn.style.cssText='padding:7px 14px;border-radius:7px;border:1px solid #fe2c55;cursor:pointer;font-size:12px;background:#1a0005;color:#fe2c55';
-    tagBtn.style.cssText='padding:7px 14px;border-radius:7px;border:1px solid #333;cursor:pointer;font-size:12px;background:#0f0f0f;color:#888';
-  }
 }
 function fmt(n){
   if(!n||n<0)return '?';
@@ -519,14 +500,14 @@ async function runAutoSearch(){
   document.getElementById('tt-auto-results').innerHTML='';
   try{
     const res=await fetch('/api/tiktok/find-viral',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      queries,is_hashtag:isHashtag,
+      queries,
       max_followers:+document.getElementById('tt-max-f').value,
       min_viral_videos:+document.getElementById('tt-min-v').value,
       viral_threshold:+document.getElementById('tt-threshold').value,
     })});
     const data=await res.json();
     if(data.count===0){
-      setStatus('tt-auto-status','該当なし。バズ判定の再生数を下げるか、最小バズ動画数を0にして再試行','done');
+      setStatus('tt-auto-status','該当なし。バズ判定の再生数を下げる / 最小バズ動画数を0にする / フォロワー上限を上げる で再試行してください','done');
     }else{
       setStatus('tt-auto-status',`✅ 完了 — ${data.count}件発見`,'done');
     }
