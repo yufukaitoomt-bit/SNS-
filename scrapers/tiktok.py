@@ -300,6 +300,54 @@ def _search_httpx(url: str) -> List[str]:
     return best
 
 
+# ─── 検索エンジン経由フォールバック ───────────────────────────────
+def _search_via_search_engine(query: str, engine_url: str) -> List[str]:
+    """検索エンジン経由でTikTokのユーザーページを探す"""
+    found: Set[str] = set()
+    for ua_label, ua in UAS:
+        try:
+            r = httpx.get(
+                engine_url,
+                headers=_headers(ua),
+                follow_redirects=True,
+                timeout=20,
+            )
+            if r.status_code == 200:
+                # tiktok.com/@username を全部抽出
+                for uid in re.findall(
+                    r'tiktok\.com/@([a-zA-Z0-9_.]+)', r.text
+                ):
+                    if _valid_username(uid):
+                        found.add(uid)
+                if found:
+                    break
+            time.sleep(0.3)
+        except Exception:
+            continue
+    return list(found)
+
+
+def _search_duckduckgo(query: str) -> List[str]:
+    q = httpx.QueryParams({"q": f'site:tiktok.com "{query}"'})
+    return _search_via_search_engine(
+        query, f"https://html.duckduckgo.com/html/?{q}"
+    )
+
+
+def _search_bing(query: str) -> List[str]:
+    q = httpx.QueryParams({"q": f'site:tiktok.com "{query}"'})
+    return _search_via_search_engine(
+        query, f"https://www.bing.com/search?{q}"
+    )
+
+
+def _search_google(query: str) -> List[str]:
+    q = httpx.QueryParams({"q": f'site:tiktok.com "{query}"'})
+    return _search_via_search_engine(
+        query, f"https://www.google.com/search?{q}"
+    )
+
+
 # ─── メイン検索関数 ───────────────────────────────────────────────
 def search_users(query: str, max_results: int = 30) -> List[str]:
     """
@@ -336,6 +384,25 @@ def search_users(query: str, max_results: int = 30) -> List[str]:
         found.update(names)
         if len(found) > before:
             print(f"[TikTok] httpx {label}: +{len(found) - before}件 (累計{len(found)})")
+
+    # 3. TikTokから直接取れない場合は検索エンジン経由
+    if len(found) < 5:
+        print(f"[TikTok] 直接検索 {len(found)}件のみ → 検索エンジン経由で補完")
+        for engine_name, engine_fn in [
+            ("DuckDuckGo", _search_duckduckgo),
+            ("Bing", _search_bing),
+            ("Google", _search_google),
+        ]:
+            names = engine_fn(q)
+            before = len(found)
+            found.update(names)
+            if len(found) > before:
+                print(
+                    f"[TikTok] {engine_name}: +{len(found) - before}件 "
+                    f"(累計{len(found)})"
+                )
+            if len(found) >= 20:
+                break
 
     print(f"[TikTok] '{query}' → 最終 {len(found)} 件のユニークユーザー")
     return list(found)

@@ -310,7 +310,8 @@ button.run:disabled{opacity:.35;cursor:not-allowed}
   <div id="panel-tt-auto" class="panel active">
     <div class="card">
       <h2>TikTok — キーワード/ハッシュタグで自動発掘</h2>
-      <div class="tip">💡 キーワード単体でも `#` 付きでもOK。タグページ・検索ページの両方から候補を収集します。結果が出ない場合はバズ判定の再生数を下げてください。</div>
+      <div class="tip">💡 キーワード単体でも `#` 付きでもOK。TikTok直接 + 検索エンジン経由の二重検索で候補を収集します。</div>
+      <div class="tip" style="border-left-color:#f0c040;background:#1a1505">⚠️ <strong>クラウド版ではTikTokからIP制限される場合があります。</strong>もし結果0件が続く場合は、Mac上で <code>bash share.sh</code> を実行してローカル版を使うと確実に動きます。</div>
       <div class="form-group" style="margin-bottom:10px">
         <label>検索ワード（1行1件、#付きでもOK）</label>
         <textarea id="tt-queries" placeholder="ファッション&#10;#営業バイト&#10;大学生 稼ぐ&#10;#代理店求人"></textarea>
