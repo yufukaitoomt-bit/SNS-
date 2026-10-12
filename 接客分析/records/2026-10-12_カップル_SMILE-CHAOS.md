@@ -2,7 +2,7 @@
 date: 2026-10-12
 time: "19:00頃"
 duration_min: 20+          # 録音が20分。接客全体はこれより長い（録音は途中から）
-store:                     # ★未記入
+store: 大阪
 staff:                     # ★未記入
 customer_count: 2
 customer_type: カップル
