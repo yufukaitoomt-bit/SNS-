@@ -8,14 +8,38 @@
       "category": "スニーカー",
       "price": 24200,
       "compare_price": 30800,
+      "discount": 0,
       "url": "",
       "celebrity": "aespa",
-      "features": ["厚底で自然に身長が盛れる", "Y2Kっぽいボリュームシルエット", "男女兼用"],
-      "colors": ["BLACK", "WHITE-SILVER", "ORIGINAL GRAY", "Light bone", "Berry Black"],
+      "features": [
+        "厚底で自然に身長が盛れる",
+        "Y2Kっぽいボリュームシルエット",
+        "男女兼用"
+      ],
+      "colors": [
+        "BLACK",
+        "WHITE-SILVER",
+        "ORIGINAL GRAY",
+        "Light bone",
+        "Berry Black"
+      ],
       "shipping_note": "公式は海外倉庫から直送のため、届くまで1週間前後",
-      "angles": ["korean", "legs", "unique", "price", "y2k", "street", "review"],
-      "hashtags": ["オールドオーダー", "TurboGT", "厚底スニーカー"],
-      "memo": "価格は公式ショップ(税込)。ORIGINAL GRAY等は¥26,400。他店価格は投稿日に要確認"
+      "angles": [
+        "korean",
+        "legs",
+        "unique",
+        "price",
+        "y2k",
+        "street",
+        "review",
+        "discount"
+      ],
+      "hashtags": [
+        "オールドオーダー",
+        "TurboGT",
+        "厚底スニーカー"
+      ],
+      "memo": "価格は公式ショップ(税込)。ORIGINAL GRAY等は¥26,400。他店価格は投稿日に要確認。リンク経由¥500オフ特典は確定したら discount に500を入れる"
     }
   ]
 }

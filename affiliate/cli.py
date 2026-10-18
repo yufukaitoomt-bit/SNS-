@@ -5,6 +5,7 @@
   python -m affiliate.cli week                       # 今週の商品(active)で生成 → out/ に保存
   python -m affiliate.cli week --product oldorder-turbo-gt --start 2026-10-19 --personas A,D,E
   python -m affiliate.cli set-url oldorder-turbo-gt https://...   # URL発行後に1回だけ
+  python -m affiliate.cli set-discount oldorder-turbo-gt 500      # リンク特典が確定したら
   python -m affiliate.cli activate oldorder-turbo-gt              # 今週売る商品を切り替え
 """
 import argparse
@@ -24,11 +25,15 @@ def main():
     w.add_argument("--start", help="開始日 YYYY-MM-DD（省略時は次の月曜）")
     w.add_argument("--days", type=int, default=7)
     w.add_argument("--personas", help="例: A,B,E（省略時は全員）")
+    w.add_argument("--platforms", help="例: TikTok,X（省略時は TikTok と X）")
     w.add_argument("--no-x", action="store_true", help="動画キャラのX版を作らない")
     w.add_argument("--out", default="out")
     u = sub.add_parser("set-url")
     u.add_argument("product")
     u.add_argument("url")
+    dc = sub.add_parser("set-discount")
+    dc.add_argument("product")
+    dc.add_argument("yen", type=int)
     a = sub.add_parser("activate")
     a.add_argument("product")
     args = ap.parse_args()
@@ -43,6 +48,11 @@ def main():
         p["url"] = args.url
         store.upsert(p)
         print(f"✅ {p['name']} のURLを設定しました")
+    elif args.cmd == "set-discount":
+        p = store.get(args.product)
+        p["discount"] = args.yen
+        store.upsert(p)
+        print(f"✅ {p['name']} のリンク特典を ¥{args.yen:,} オフに設定しました")
     elif args.cmd == "activate":
         store.set_active(args.product)
         print(f"✅ 今週の商品: {args.product}")
@@ -50,7 +60,8 @@ def main():
         p = store.get(args.product)
         start = date.fromisoformat(args.start) if args.start else None
         personas = args.personas.split(",") if args.personas else None
-        posts = generate_week(p, start=start, days=args.days, persona_keys=personas, x_for_all=not args.no_x)
+        posts = generate_week(p, start=start, days=args.days, persona_keys=personas, x_for_all=not args.no_x,
+                             platforms=args.platforms.split(",") if args.platforms else None)
         out = Path(args.out)
         out.mkdir(exist_ok=True)
         stem = f"{p['id']}_{posts[0]['date'][:10]}" if posts else p["id"]

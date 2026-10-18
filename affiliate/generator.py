@@ -6,7 +6,7 @@ import re
 from datetime import date, timedelta
 from typing import List, Optional
 
-from .library import ANGLES, CTA, FORMATS, PERSONAS, TEXT_ONLY_PLATFORMS
+from .library import ANGLES, CTA, DEFAULT_PLATFORMS, FORMATS, PERSONAS, TEXT_ONLY_PLATFORMS, X_FORMATS, X_QUESTIONS
 
 URL_PLACEHOLDER = "【URL未設定】"
 X_LIMIT = 140  # 全角換算の目安（URLは別枠で23文字扱い）
@@ -21,6 +21,7 @@ def _yen(n: Optional[int]) -> str:
 def product_vars(p: dict, rng: random.Random) -> dict:
     price = p.get("price") or 0
     compare = p.get("compare_price") or 0
+    discount = p.get("discount") or 0
     features = [f for f in p.get("features", []) if f]
     colors = [c for c in p.get("colors", []) if c]
     return {
@@ -32,9 +33,16 @@ def product_vars(p: dict, rng: random.Random) -> dict:
         "compare_price": _yen(compare) if compare > price else "",
         "diff": _yen(compare - price) if compare > price else "",
         "celebrity": p.get("celebrity", ""),
+        "discount": _yen(discount) if 0 < discount < price else "",
+        "sale_price": _yen(price - discount) if 0 < discount < price else "",
         "feature": rng.choice(features) if features else "",
         "color": rng.choice(colors) if colors else "実物",
+        "colors": " / ".join(colors),
     }
+
+
+def _deal_line(v: dict, via: str) -> str:
+    return f"🎁 {via}から買うと{v['discount']}オフ（実質{v['sale_price']}）" if v["discount"] else ""
 
 
 def _fill(template: str, v: dict) -> Optional[str]:
@@ -79,7 +87,9 @@ def hashtags(p: dict, angle_key: str) -> List[str]:
 def _angles_for(persona: dict, product: dict) -> List[str]:
     enabled = [a for a in product.get("angles", []) if a in ANGLES]
     if not enabled:
-        enabled = list(ANGLES)
+        enabled = [a for a in ANGLES if a != "discount"]
+    if product.get("discount") and "discount" not in enabled:
+        enabled.insert(1, "discount")
     # 商品の主軸(先頭)を優先しつつ、ペルソナが得意な軸と重なるものを使う
     overlap = [a for a in persona["angles"] if a in enabled]
     if not overlap:
@@ -93,24 +103,49 @@ def _caption(hook: str, points: List[str], v: dict, p: dict, tone: str, rng: ran
     lines = [hook, ""]
     lines += [f"・{pt}" for pt in points[:3]]
     lines += ["", f"{v['full_name']}（{v['price']}）" if v["price"] else v["full_name"]]
+    if v["discount"]:
+        lines.append(_deal_line(v, "プロフィールのリンク"))
     if p.get("shipping_note"):
         lines.append(f"※{p['shipping_note']}")
     lines += [rng.choice(CTA[tone]), "", " ".join(tags)]
     return "\n".join(lines)
 
 
-def _x_post(hook: str, point: str, v: dict, p: dict, angle_key: str) -> str:
-    """X/Threads用。リンクを本文に直接入れられるので、短く言い切ってURLで締める。"""
+def _x_post(hook: str, point: str, v: dict, p: dict, angle_key: str, fmt: str, rng: random.Random) -> str:
+    """X/Threads用。fmt は library.X_FORMATS のキー。"""
     url = p.get("url") or URL_PLACEHOLDER
-    tags = hashtags(p, angle_key)[:3]  # Xはタグ多すぎると伸びにくい
+    tags = " ".join(hashtags(p, angle_key)[:3])  # Xはタグ多すぎると伸びにくい
     price = f"（{v['price']}）" if v["price"] else ""
-    body = f"{hook}\n\n{point}\n{v['full_name']}{price}"
-    if p.get("shipping_note"):
-        body += f"\n※{p['shipping_note']}"
-    # 本文が長すぎる場合はポイント行を落とす
-    if len(body) > X_LIMIT - 30:
-        body = f"{hook}\n{v['full_name']}{price}"
-    return f"{body}\n{' '.join(tags)}\n{url}"
+    deal = _deal_line(v, "このリンク")
+    ship = f"※{p['shipping_note']}" if p.get("shipping_note") else ""
+
+    if fmt == "question":
+        q = rng.choice(X_QUESTIONS if v["colors"] else X_QUESTIONS[1:])
+        colors = f"\n{v['colors']}" if "色" in q else ""
+        return f"{hook}\n\n{q}{colors}\n\n{tags}\n\n――リプ欄に貼る――\n{v['full_name']}{price}\n{deal}\n{url}".replace("\n\n\n", "\n\n")
+    if fmt == "thread":
+        reply = "\n".join(x for x in [f"{v['full_name']}{price}", deal, ship, url] if x)
+        return f"【1】{hook}\n\n{point}\n\n↓詳細はリプ欄\n{tags}\n\n【2（リプ）】\n{reply}"
+    if fmt == "deal" and v["discount"]:
+        body = "\n".join(x for x in [hook, "", f"{v['full_name']}", f"通常{v['price']} → このリンクから{v['sale_price']}", ship] if x is not None)
+        return f"{body}\n{tags}\n{url}"
+
+    lines = [hook, "", point, f"{v['full_name']}{price}"]
+    if deal:
+        lines.append(deal)
+    if ship:
+        lines.append(ship)
+    body = "\n".join(lines)
+    if len(body) > X_LIMIT - 30:  # 長すぎる場合はポイント行と注意書きを落とす
+        body = "\n".join([hook, f"{v['full_name']}{price}"] + ([deal] if deal else []))
+    return f"{body}\n{tags}\n{url}"
+
+
+def _x_formats(v: dict) -> List[str]:
+    fmts = ["single", "thread", "question"]
+    if v["discount"]:
+        fmts.append("deal")
+    return fmts
 
 
 def generate_week(
@@ -120,8 +155,11 @@ def generate_week(
     persona_keys: Optional[List[str]] = None,
     x_for_all: bool = True,
     x_per_day: int = 3,
+    platforms: Optional[List[str]] = None,
 ) -> List[dict]:
-    """1ペルソナ×1日=動画1本（＋X版）。速報系ペルソナはXを1日 x_per_day 本。"""
+    """1ペルソナ×1日=動画1本（＋X版）。速報系ペルソナはXを1日 x_per_day 本。
+    platforms で出す媒体を絞る（既定は TikTok と X）。"""
+    platforms = platforms or DEFAULT_PLATFORMS
     if start is None:
         today = date.today()
         start = today + timedelta(days=(7 - today.weekday()) % 7 or 7)  # 次の月曜
@@ -131,10 +169,14 @@ def generate_week(
 
     for pk in persona_keys:
         persona = PERSONAS[pk]
+        persona_platforms = [pl for pl in persona["platforms"] if pl in platforms]
+        if not persona_platforms and not ("X" in platforms and x_for_all):
+            continue
         rng = random.Random(f"{seed}-{pk}")
         angle_keys = _angles_for(persona, product)
         text_only = all(pl in TEXT_ONLY_PLATFORMS for pl in persona["platforms"])
-        video_platforms = [pl for pl in persona["platforms"] if pl not in TEXT_ONLY_PLATFORMS]
+        video_platforms = [pl for pl in persona_platforms if pl not in TEXT_ONLY_PLATFORMS]
+        x_on = "X" in platforms and x_for_all
         used_hooks = set()
 
         def pick_hook(angle_key, v):
@@ -157,13 +199,18 @@ def generate_week(
                     ak = angle_keys[(d + i) % len(angle_keys)]
                     v2 = product_vars(product, rng)
                     pts = _points(ANGLES[ak], v2) or [v2["name"]]
+                    fmts = _x_formats(v2)
+                    xf = fmts[(d * x_per_day + i) % len(fmts)]
+                    if xf == "deal":  # 特典告知は必ず特典のフックで
+                        ak = "discount"
+                        pts = _points(ANGLES[ak], v2)
+                    hook = pick_hook(ak, v2)
                     posts.append({
                         "date": day_label, "persona": pk, "persona_label": persona["label"],
-                        "platform": " / ".join(persona["platforms"]), "angle": ANGLES[ak]["label"],
-                        "format": "テキスト", "hook": pick_hook(ak, v2), "script": "",
-                        "caption": "", "hashtags": "",
+                        "platform": " / ".join(persona_platforms), "angle": ANGLES[ak]["label"],
+                        "format": X_FORMATS[xf], "hook": hook, "script": "",
+                        "caption": _x_post(hook, rng.choice(pts), v2, product, ak, xf, rng), "hashtags": "",
                     })
-                    posts[-1]["caption"] = _x_post(posts[-1]["hook"], rng.choice(pts), v2, product, ak)
                 continue
 
             fkey = persona["formats"][d % len(persona["formats"])]
@@ -172,19 +219,27 @@ def generate_week(
             script_vars = {**v, "hook": hook, "point": point}
             script = "\n".join(s.format_map(script_vars) for s in FORMATS[fkey]["script"])
             tags = hashtags(product, angle_key)
-            posts.append({
-                "date": day_label, "persona": pk, "persona_label": persona["label"],
-                "platform": " / ".join(video_platforms), "angle": angle["label"],
-                "format": FORMATS[fkey]["label"], "hook": hook, "script": script,
-                "caption": _caption(hook, points, v, product, persona["tone"], rng, tags),
-                "hashtags": " ".join(tags),
-            })
-            if x_for_all:
+            if video_platforms:
                 posts.append({
                     "date": day_label, "persona": pk, "persona_label": persona["label"],
-                    "platform": "X", "angle": angle["label"],
-                    "format": "テキスト（同じ動画を添付可）", "hook": hook, "script": "",
-                    "caption": _x_post(hook, point, v, product, angle_key), "hashtags": "",
+                    "platform": " / ".join(video_platforms), "angle": angle["label"],
+                    "format": FORMATS[fkey]["label"], "hook": hook, "script": script,
+                    "caption": _caption(hook, points, v, product, persona["tone"], rng, tags),
+                    "hashtags": " ".join(tags),
+                })
+            if x_on:
+                xf = _x_formats(v)[d % len(_x_formats(v))]
+                x_angle, x_hook, x_point = angle_key, hook, point
+                if xf == "deal":  # 特典告知は必ず特典のフックで
+                    x_angle = "discount"
+                    x_hook = pick_hook(x_angle, v)
+                    x_point = _points(ANGLES[x_angle], v)[0]
+                posts.append({
+                    "date": day_label, "persona": pk, "persona_label": persona["label"],
+                    "platform": "X", "angle": ANGLES[x_angle]["label"],
+                    "format": X_FORMATS[xf] + ("（同じ動画を添付）" if video_platforms else ""),
+                    "hook": x_hook, "script": "",
+                    "caption": _x_post(x_hook, x_point, v, product, x_angle, xf, rng), "hashtags": "",
                 })
 
     posts.sort(key=lambda x: (x["date"], x["persona"]))

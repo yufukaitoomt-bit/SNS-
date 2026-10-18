@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from . import store
 from .generator import generate_week, to_csv, to_markdown
-from .library import ANGLES, FORMATS, PERSONAS
+from .library import ALL_PLATFORMS, ANGLES, DEFAULT_PLATFORMS, FORMATS, PERSONAS
 
 router = APIRouter()
 
@@ -20,6 +20,7 @@ class Product(BaseModel):
     category: str = "スニーカー"
     price: int = 0
     compare_price: int = 0
+    discount: int = 0
     url: str = ""
     celebrity: str = ""
     features: List[str] = []
@@ -36,6 +37,7 @@ class GenerateReq(BaseModel):
     days: int = 7
     personas: Optional[List[str]] = None
     x_for_all: bool = True
+    platforms: Optional[List[str]] = None
 
 
 def _product(pid: Optional[str]) -> dict:
@@ -47,7 +49,8 @@ def _product(pid: Optional[str]) -> dict:
 
 def _generate(req: GenerateReq):
     p = _product(req.product_id)
-    return p, generate_week(p, start=req.start, days=req.days, persona_keys=req.personas, x_for_all=req.x_for_all)
+    return p, generate_week(p, start=req.start, days=req.days, persona_keys=req.personas,
+                          x_for_all=req.x_for_all, platforms=req.platforms)
 
 
 @router.get("/api/affiliate/meta")
@@ -55,6 +58,8 @@ async def meta():
     return {
         "angles": {k: v["label"] for k, v in ANGLES.items()},
         "formats": {k: v["label"] for k, v in FORMATS.items()},
+        "platforms": ALL_PLATFORMS,
+        "default_platforms": DEFAULT_PLATFORMS,
         "personas": {k: {"label": v["label"], "platforms": v["platforms"]} for k, v in PERSONAS.items()},
     }
 
@@ -174,7 +179,10 @@ pre{white-space:pre-wrap;background:#0f0f0f;border:1px solid #2a2a2a;border-radi
       <div class="form-group"><label>公式価格（税込・円）</label><input id="price" type="number"></div>
       <div class="form-group"><label>他店価格（公式より高い場合のみ。投稿日に要確認）</label><input id="compare_price" type="number"></div>
     </div>
-    <div class="form-group" style="margin-bottom:10px"><label>アフィリエイトURL</label><input id="url" placeholder="発行されたら貼る"></div>
+    <div class="form-row">
+      <div class="form-group"><label>アフィリエイトURL</label><input id="url" placeholder="発行されたら貼る"></div>
+      <div class="form-group"><label>リンク経由の割引額（円・確定したら入力。0＝なし）</label><input id="discount" type="number" placeholder="例: 500"></div>
+    </div>
     <div class="form-row">
       <div class="form-group"><label>特徴（1行1つ）</label><textarea id="features"></textarea></div>
       <div class="form-group"><label>カラー（1行1つ）</label><textarea id="colors"></textarea></div>
@@ -199,6 +207,8 @@ pre{white-space:pre-wrap;background:#0f0f0f;border:1px solid #2a2a2a;border-radi
       <div class="form-group"><label>開始日（空欄＝次の月曜）</label><input id="start" type="date"></div>
       <div class="form-group"><label>日数</label><input id="days" type="number" value="7" min="1" max="31"></div>
     </div>
+    <label>媒体（既定: TikTok と X）</label>
+    <div class="checks" id="platforms"></div>
     <label>キャラ（アカウント）</label>
     <div class="checks" id="personas"></div>
     <div class="checks"><label><input type="checkbox" id="xall" checked>動画キャラのX版も作る</label></div>
@@ -219,6 +229,7 @@ const lines=s=>s.split('\\n').map(x=>x.trim()).filter(Boolean);
 
 async function init(){
   META=await (await fetch('/api/affiliate/meta')).json();
+  $('platforms').innerHTML=META.platforms.map(p=>`<label><input type="checkbox" value="${esc(p)}" ${META.default_platforms.includes(p)?'checked':''}>${esc(p)}</label>`).join('');
   $('personas').innerHTML=Object.entries(META.personas).map(([k,v])=>`<label><input type="checkbox" value="${k}" checked>${k} ${esc(v.label)}（${v.platforms.join('/')}）</label>`).join('');
   await reload();
 }
@@ -239,7 +250,7 @@ function toggleAngle(k,on){
   angleOrder=angleOrder.filter(a=>a!==k); if(on)angleOrder.push(k); renderAngles(angleOrder);
 }
 function fill(p){
-  for(const k of ['brand','name','category','celebrity','price','compare_price','url','shipping_note','memo'])$(k).value=p[k]??'';
+  for(const k of ['brand','name','category','celebrity','price','compare_price','discount','url','shipping_note','memo'])$(k).value=p[k]??'';
   $('features').value=(p.features||[]).join('\\n');
   $('colors').value=(p.colors||[]).join('\\n');
   $('hashtags').value=(p.hashtags||[]).join(' ');
@@ -250,7 +261,7 @@ function loadForm(){const p=DATA.products.find(x=>x.id===$('sel').value); fill(p
 function newForm(){$('sel').dataset.editing=''; fill({category:'スニーカー'});}
 async function saveProduct(){
   const body={id:$('sel').dataset.editing||null,brand:$('brand').value.trim(),name:$('name').value.trim(),category:$('category').value.trim()||'スニーカー',
-    celebrity:$('celebrity').value.trim(),price:+$('price').value||0,compare_price:+$('compare_price').value||0,url:$('url').value.trim(),
+    celebrity:$('celebrity').value.trim(),price:+$('price').value||0,compare_price:+$('compare_price').value||0,discount:+$('discount').value||0,url:$('url').value.trim(),
     features:lines($('features').value),colors:lines($('colors').value),shipping_note:$('shipping_note').value.trim(),
     hashtags:$('hashtags').value.split(/\\s+/).map(t=>t.replace(/^#/,'')).filter(Boolean),angles:angleOrder,memo:$('memo').value.trim()};
   if(!body.brand||!body.name)return alert('ブランドと商品名は必須です');
@@ -263,7 +274,8 @@ async function delProduct(){
 }
 function req(){
   return {product_id:$('sel').value||null,start:$('start').value||null,days:+$('days').value||7,
-    personas:[...$('personas').querySelectorAll('input:checked')].map(i=>i.value),x_for_all:$('xall').checked};
+    personas:[...$('personas').querySelectorAll('input:checked')].map(i=>i.value),x_for_all:$('xall').checked,
+    platforms:[...$('platforms').querySelectorAll('input:checked')].map(i=>i.value)};
 }
 async function gen(){
   $('g-status').textContent='生成中...';

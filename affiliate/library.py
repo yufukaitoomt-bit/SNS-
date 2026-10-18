@@ -3,7 +3,7 @@
 テンプレート内で使えるプレースホルダ:
   {name} 商品名 / {brand} ブランド名 / {price} 価格表記 / {feature} 特徴(ランダム1つ)
   {color} カラー(ランダム1つ) / {celebrity} 着用有名人 / {compare_price} 他店価格 / {diff} 差額
-  {category} カテゴリ(スニーカー等)
+  {category} カテゴリ(スニーカー等) / {discount} リンク経由の割引額 / {sale_price} 割引後の価格
 
 requires に書いた項目が商品に入っていないテンプレートは使われない
 (例: 有名人が未設定の商品で「◯◯着用」と出さないため)。
@@ -93,6 +93,17 @@ ANGLES = {
         ],
         "points": ["サイズ感（普段◯cm→◯cmを選択）", "履き心地・重さ", "{feature}"],
         "tags": ["#正直レビュー", "#購入品紹介", "#サイズ感"],
+    },
+    "discount": {
+        "label": "リンク限定特典",
+        "hooks": [
+            {"t": "このリンクから買うと{discount}オフになる{category}", "requires": ["discount"]},
+            {"t": "公式価格からさらに{discount}オフで買える方法", "requires": ["discount"]},
+            {"t": "{name}、実質{sale_price}で買えるの知ってた？", "requires": ["discount"]},
+            {"t": "{name}買うなら、普通に買うより{discount}お得なやり方ある", "requires": ["discount"]},
+        ],
+        "points": ["リンク経由で{discount}オフ（実質{sale_price}）", "{feature}"],
+        "tags": ["#お得情報", "#クーポン", "#買ってよかった"],
     },
     "gift": {
         "label": "プレゼント",
@@ -184,20 +195,37 @@ PERSONAS = {
     "D": {
         "label": "スニーカーレビュー",
         "platforms": ["TikTok", "YouTubeショート"],
-        "angles": ["review", "price", "unique", "gift"],
+        "angles": ["review", "price", "discount", "unique", "gift"],
         "formats": ["size", "ranking", "unboxing", "compare"],
         "tone": "neutral",
     },
     "E": {
         "label": "速報（X）",
         "platforms": ["X", "Threads"],
-        "angles": ["price", "korean", "unique", "gift"],
+        "angles": ["discount", "price", "korean", "unique", "gift"],
         "formats": [],
         "tone": "neutral",
     },
 }
 
 TEXT_ONLY_PLATFORMS = {"X", "Threads"}
+ALL_PLATFORMS = ["TikTok", "X", "Instagram", "YouTubeショート", "Threads"]
+DEFAULT_PLATFORMS = ["TikTok", "X"]  # 主戦場。他は余力があれば同じ動画を転用
+
+# ─── X投稿の型 ───────────────────────────────────────
+# single: 1投稿で完結 / question: 返信を集める / thread: 本文は伸ばしリンクはリプ欄 / deal: 特典告知
+X_FORMATS = {
+    "single": "1投稿",
+    "question": "質問（リプ集め）",
+    "thread": "ツリー（リンクはリプ欄）",
+    "deal": "特典告知",
+}
+X_QUESTIONS = [
+    "みんななら何色にする？",
+    "これ履くならどんなコーデ合わせる？",
+    "アリ？ナシ？正直に教えて",
+    "これ知ってた人いる？",
+]
 
 # 文末の誘導文（ペルソナの口調別）
 CTA = {
