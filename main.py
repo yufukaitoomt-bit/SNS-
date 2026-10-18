@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from scrapers.tiktok import analyze_user, find_viral_accounts
 from scrapers.instagram import InstagramScraper
+from affiliate.api import router as affiliate_router
 
 # ─── パターン分析ロジック ─────────────────────────────────────────
 JP_STOP = {"の","に","は","を","が","で","と","た","し","て","い","な","も","こ","れ","あ","そ","る","ん","か","ら","く","さ","っ","つ","わ","よ","ね","から","です","ます","した","ある","いる","ない","する","なの","これ","それ","あれ","この","その","あの","で","も"}
@@ -249,6 +250,7 @@ def analyze_patterns(accounts: List[dict]) -> dict:
 instagram: Optional[InstagramScraper] = None
 
 app = FastAPI(title="SNS Analyzer")
+app.include_router(affiliate_router)
 
 @app.on_event("startup")
 async def startup():
@@ -462,6 +464,7 @@ button.run:disabled{opacity:.35;cursor:not-allowed}
     <button class="tab" onclick="sw('tt-user')">TikTok ユーザー調査</button>
     <button class="tab" onclick="sw('ig-auto')">Instagram 発掘</button>
     <button class="tab" onclick="sw('ig-user')">Instagram ユーザー調査</button>
+    <button class="tab" onclick="location.href='/affiliate'">🛒 アフィリエイト投稿</button>
   </div>
 
   <!-- TikTok 自動発掘 -->
