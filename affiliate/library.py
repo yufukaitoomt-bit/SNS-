@@ -3,7 +3,8 @@
 テンプレート内で使えるプレースホルダ:
   {name} 商品名 / {brand} ブランド名 / {price} 価格表記 / {feature} 特徴(ランダム1つ)
   {color} カラー(ランダム1つ) / {celebrity} 着用有名人 / {compare_price} 他店価格 / {diff} 差額
-  {category} カテゴリ(スニーカー等) / {discount} リンク経由の割引額 / {sale_price} 割引後の価格
+  {category} カテゴリ(スニーカー等) / {sole_height} ソールの高さ / {size_tip} 公式のサイズ案内
+  {discount} リンク経由の割引額 / {sale_price} 割引後の価格
 
 requires に書いた項目が商品に入っていないテンプレートは使われない
 (例: 有名人が未設定の商品で「◯◯着用」と出さないため)。
@@ -14,7 +15,7 @@ ANGLES = {
     "korean": {
         "label": "韓国系・K-POP",
         "hooks": [
-            {"t": "韓国の子がみんな履いてる{category}、日本で買えるの知ってた？"},
+            {"t": "韓国っぽコーデに合わせたい{category}、日本で買えるの知ってた？"},
             {"t": "{celebrity}が履いてる{category}、{price}で買える", "requires": ["celebrity"]},
             {"t": "{celebrity}着用の{name}、実物レビューします", "requires": ["celebrity"]},
             {"t": "韓国っぽコーデは足元で9割決まる"},
@@ -41,15 +42,15 @@ ANGLES = {
         "tags": ["#ストリートファッション", "#スケーター", "#ストリートコーデ", "#メンズファッション"],
     },
     "legs": {
-        "label": "脚長・スタイルアップ",
+        "label": "厚底・身長盛り",
         "hooks": [
-            {"t": "普通の{category} vs {name}、脚の長さ見て"},
-            {"t": "身長盛りたい人、この{category}一択"},
-            {"t": "低身長でもスタイル良く見える{category}"},
-            {"t": "履くだけで脚長に見えるの反則"},
+            {"t": "普通の{category} vs {name}、並べて比べてみた"},
+            {"t": "身長盛りたい人へ。ソール{sole_height}の{category}", "requires": ["sole_height"]},
+            {"t": "低身長コーデの足元、{name}にしてみた"},
+            {"t": "厚底{category}で全身バランス変えてみた"},
         ],
-        "points": ["厚底で自然に身長が盛れる", "ボリュームで脚が細く見える", "{feature}"],
-        "tags": ["#脚長効果", "#低身長コーデ", "#厚底スニーカー", "#スタイルアップ"],
+        "points": ["ソールの高さ{sole_height}（公式表記）", "{feature}"],
+        "tags": ["#低身長コーデ", "#厚底スニーカー", "#身長盛り"],
     },
     "unique": {
         "label": "人と被らない",
@@ -59,7 +60,7 @@ ANGLES = {
             {"t": "まだ日本で知ってる人少ない{brand}"},
             {"t": "定番ブランドから卒業したい人向けの{category}"},
         ],
-        "points": ["街でほぼ被らない", "知る人ぞ知るブランド", "{feature}"],
+        "points": ["まだ周りと被りにくい", "知る人ぞ知るブランド", "{feature}"],
         "tags": ["#被らない", "#人と被らないファッション", "#スニーカー好きと繋がりたい"],
     },
     "y2k": {
@@ -75,7 +76,7 @@ ANGLES = {
     "price": {
         "label": "コスパ・公式価格",
         "hooks": [
-            {"t": "ハイブラ見えする{category}が{price}"},
+            {"t": "{brand}の{category}、公式なら{price}"},
             {"t": "他の店だと{compare_price}、公式なら{price}", "requires": ["compare_price"]},
             {"t": "買う場所で{diff}も変わる{category}", "requires": ["compare_price"]},
             {"t": "学生でも買える{price}のおしゃれ{category}"},
@@ -91,7 +92,7 @@ ANGLES = {
             {"t": "{name}のサイズ感、買う前に見て"},
             {"t": "{brand}買って後悔したこと・良かったこと"},
         ],
-        "points": ["サイズ感（普段◯cm→◯cmを選択）", "履き心地・重さ", "{feature}"],
+        "points": ["サイズ感（普段◯cm→◯cmを選択）", "公式のサイズ案内: {size_tip}", "{feature}"],
         "tags": ["#正直レビュー", "#購入品紹介", "#サイズ感"],
     },
     "discount": {
@@ -129,11 +130,11 @@ FORMATS = {
         ],
     },
     "size": {
-        "label": "サイズ感・履き心地",
+        "label": "サイズ感",
         "script": [
             "0-2秒: フック（{hook}）",
-            "2-5秒: 「普段◯cm → {name}は◯cmを選択」",
-            "5-9秒: つま先・かかとの余り、厚底の高さを見せる",
+            "2-5秒: 「普段◯cm → {name}は◯cmを選択」（自分の実測のみ）",
+            "5-9秒: つま先・かかとの余り、ソールの高さを定規で見せる",
             "9-13秒: 歩くシーン。「{point}」",
             "13-15秒: 「カラー違いはプロフィールのリンクから」",
         ],
@@ -209,6 +210,18 @@ PERSONAS = {
 }
 
 TEXT_ONLY_PLATFORMS = {"X", "Threads"}
+
+# 投稿時に各媒体でONにする広告表示の設定（#PRと両方やる。設定は後から本人が消せない）
+DISCLOSURE = {
+    "X": "投稿時に「有料パートナーシップ」ラベルをON",
+    "TikTok": "投稿時に「コンテンツの開示（ブランドコンテンツ）」をON",
+    "Instagram": "投稿時に「タイアップ投稿ラベル」をON",
+    "YouTubeショート": "「有料プロモーションを含む」をON",
+    "Threads": "本文の#PRで表示",
+}
+
+# 根拠のない効能・比較表現。商品データや追加テンプレに混ざっていたら生成を止める
+BANNED_PHRASES = ["細見え", "細く見え", "疲れにくい", "疲れない", "履き心地抜群", "ハイブラ見え", "着痩せ", "No.1", "日本一", "最安"]
 ALL_PLATFORMS = ["TikTok", "X", "Instagram", "YouTubeショート", "Threads"]
 DEFAULT_PLATFORMS = ["TikTok", "X"]  # 主戦場。他は余力があれば同じ動画を転用
 

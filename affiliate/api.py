@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 from . import store
-from .generator import generate_week, to_csv, to_markdown
+from .generator import check_claims, generate_week, to_csv, to_markdown
 from .library import ALL_PLATFORMS, ANGLES, DEFAULT_PLATFORMS, FORMATS, PERSONAS
 
 router = APIRouter()
@@ -23,6 +23,8 @@ class Product(BaseModel):
     discount: int = 0
     url: str = ""
     celebrity: str = ""
+    sole_height: str = ""
+    size_tip: str = ""
     features: List[str] = []
     colors: List[str] = []
     shipping_note: str = ""
@@ -71,6 +73,9 @@ async def list_products():
 
 @router.post("/api/affiliate/products")
 async def save_product(p: Product, activate: bool = False):
+    ng = check_claims(p.model_dump())
+    if ng:
+        raise HTTPException(400, f"根拠のない表現は使えません: {'、'.join(ng)}（公式サイトに書いてある事実だけを入れてください）")
     return store.upsert(p.model_dump(), make_active=activate)
 
 
@@ -173,7 +178,7 @@ pre{white-space:pre-wrap;background:#0f0f0f;border:1px solid #2a2a2a;border-radi
     </div>
     <div class="form-row">
       <div class="form-group"><label>カテゴリ（スニーカー / サンダル / バッグ等）</label><input id="category"></div>
-      <div class="form-group"><label>着用している有名人（事実のみ。空欄なら使わない）</label><input id="celebrity"></div>
+      <div class="form-group"><label>着用している有名人（本人発信などで確認できた場合のみ）</label><input id="celebrity"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>公式価格（税込・円）</label><input id="price" type="number"></div>
@@ -184,8 +189,12 @@ pre{white-space:pre-wrap;background:#0f0f0f;border:1px solid #2a2a2a;border-radi
       <div class="form-group"><label>リンク経由の割引額（円・確定したら入力。0＝なし）</label><input id="discount" type="number" placeholder="例: 500"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>特徴（1行1つ）</label><textarea id="features"></textarea></div>
+      <div class="form-group"><label>特徴（公式サイトに書いてある事実のみ・1行1つ）</label><textarea id="features" placeholder="例: 男女兼用"></textarea></div>
       <div class="form-group"><label>カラー（1行1つ）</label><textarea id="colors"></textarea></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>ソールの高さ（公式表記。例: 5.5cm）</label><input id="sole_height"></div>
+      <div class="form-group"><label>公式のサイズ案内（例: ワンサイズ上推奨）</label><input id="size_tip"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>配送などの注意書き</label><input id="shipping_note"></div>
@@ -250,7 +259,7 @@ function toggleAngle(k,on){
   angleOrder=angleOrder.filter(a=>a!==k); if(on)angleOrder.push(k); renderAngles(angleOrder);
 }
 function fill(p){
-  for(const k of ['brand','name','category','celebrity','price','compare_price','discount','url','shipping_note','memo'])$(k).value=p[k]??'';
+  for(const k of ['brand','name','category','celebrity','price','compare_price','discount','sole_height','size_tip','url','shipping_note','memo'])$(k).value=p[k]??'';
   $('features').value=(p.features||[]).join('\\n');
   $('colors').value=(p.colors||[]).join('\\n');
   $('hashtags').value=(p.hashtags||[]).join(' ');
@@ -261,12 +270,13 @@ function loadForm(){const p=DATA.products.find(x=>x.id===$('sel').value); fill(p
 function newForm(){$('sel').dataset.editing=''; fill({category:'スニーカー'});}
 async function saveProduct(){
   const body={id:$('sel').dataset.editing||null,brand:$('brand').value.trim(),name:$('name').value.trim(),category:$('category').value.trim()||'スニーカー',
-    celebrity:$('celebrity').value.trim(),price:+$('price').value||0,compare_price:+$('compare_price').value||0,discount:+$('discount').value||0,url:$('url').value.trim(),
+    celebrity:$('celebrity').value.trim(),sole_height:$('sole_height').value.trim(),size_tip:$('size_tip').value.trim(),price:+$('price').value||0,compare_price:+$('compare_price').value||0,discount:+$('discount').value||0,url:$('url').value.trim(),
     features:lines($('features').value),colors:lines($('colors').value),shipping_note:$('shipping_note').value.trim(),
     hashtags:$('hashtags').value.split(/\\s+/).map(t=>t.replace(/^#/,'')).filter(Boolean),angles:angleOrder,memo:$('memo').value.trim()};
   if(!body.brand||!body.name)return alert('ブランドと商品名は必須です');
   const r=await fetch('/api/affiliate/products?activate=true',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const p=await r.json(); await reload(p.id); $('p-status').innerHTML+=' ✅ 保存しました（今週の商品に設定）';
+  const p=await r.json(); if(!r.ok){$('p-status').innerHTML='<span class="warn">'+esc(p.detail)+'</span>';return;}
+  await reload(p.id); $('p-status').innerHTML+=' ✅ 保存しました（今週の商品に設定）';
 }
 async function delProduct(){
   const id=$('sel').dataset.editing; if(!id||!confirm('この商品を削除しますか？'))return;
@@ -287,7 +297,8 @@ async function gen(){
     if(p.date!==day){day=p.date;html+=`<div class="day">${esc(day)}</div>`;}
     html+=`<div class="post"><div class="meta"><span class="chip p">${p.persona} ${esc(p.persona_label)}</span><span class="chip">${esc(p.platform)}</span><span class="chip">${esc(p.angle)}</span><span class="chip">${esc(p.format)}</span></div>`
       +(p.script?`<div class="sub">台本</div><pre id="s${i}">${esc(p.script)}</pre><button class="copy" onclick="cp('s${i}')">台本をコピー</button>`:'')
-      +`<div class="sub">投稿文</div><pre id="c${i}">${esc(p.caption)}</pre><button class="copy" onclick="cp('c${i}')">投稿文をコピー</button></div>`;
+      +`<div class="sub">投稿文</div><pre id="c${i}">${esc(p.caption)}</pre><button class="copy" onclick="cp('c${i}')">投稿文をコピー</button>`
+      +(p.disclosure?`<div class="sub warn">☑️ ${esc(p.disclosure)}</div>`:'')+`</div>`;
   });
   $('out').innerHTML=html;
 }

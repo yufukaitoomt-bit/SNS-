@@ -6,7 +6,7 @@ import re
 from datetime import date, timedelta
 from typing import List, Optional
 
-from .library import ANGLES, CTA, DEFAULT_PLATFORMS, FORMATS, PERSONAS, TEXT_ONLY_PLATFORMS, X_FORMATS, X_QUESTIONS
+from .library import ANGLES, BANNED_PHRASES, CTA, DEFAULT_PLATFORMS, DISCLOSURE, FORMATS, PERSONAS, TEXT_ONLY_PLATFORMS, X_FORMATS, X_QUESTIONS
 
 URL_PLACEHOLDER = "【URL未設定】"
 X_LIMIT = 140  # 全角換算の目安（URLは別枠で23文字扱い）
@@ -33,6 +33,8 @@ def product_vars(p: dict, rng: random.Random) -> dict:
         "compare_price": _yen(compare) if compare > price else "",
         "diff": _yen(compare - price) if compare > price else "",
         "celebrity": p.get("celebrity", ""),
+        "sole_height": p.get("sole_height", ""),
+        "size_tip": p.get("size_tip", ""),
         "discount": _yen(discount) if 0 < discount < price else "",
         "sale_price": _yen(price - discount) if 0 < discount < price else "",
         "feature": rng.choice(features) if features else "",
@@ -242,14 +244,22 @@ def generate_week(
                     "caption": _x_post(x_hook, x_point, v, product, x_angle, xf, rng), "hashtags": "",
                 })
 
+    for post in posts:
+        post["disclosure"] = " / ".join(DISCLOSURE[pl] for pl in post["platform"].split(" / ") if pl in DISCLOSURE)
     posts.sort(key=lambda x: (x["date"], x["persona"]))
     return posts
+
+
+def check_claims(product: dict) -> List[str]:
+    """商品データに根拠のない効能・比較表現が入っていないか確認する。"""
+    text = " ".join(str(v) for k, v in product.items() if k != "memo")
+    return [w for w in BANNED_PHRASES if w in text]
 
 
 COLUMNS = [
     ("date", "日付"), ("persona", "ペルソナ"), ("persona_label", "キャラ"), ("platform", "媒体"),
     ("angle", "訴求軸"), ("format", "フォーマット"), ("hook", "フック"), ("script", "台本"),
-    ("caption", "投稿文"), ("hashtags", "ハッシュタグ"),
+    ("caption", "投稿文"), ("hashtags", "ハッシュタグ"), ("disclosure", "広告表示の設定"),
 ]
 
 
@@ -263,7 +273,8 @@ def to_csv(posts: List[dict]) -> str:
 
 
 def to_markdown(product: dict, posts: List[dict]) -> str:
-    out = [f"# {product.get('brand', '')} {product.get('name', '')} 投稿カレンダー", ""]
+    out = [f"# {product.get('brand', '')} {product.get('name', '')} 投稿カレンダー", "",
+           "> 投稿文の#PRに加えて、各投稿の ☑️ の広告表示設定を必ずONにすること。", ""]
     if not product.get("url"):
         out += [f"> ⚠️ URL未設定。投稿文中の `{URL_PLACEHOLDER}` を差し替えてください。", ""]
     current = None
@@ -274,5 +285,8 @@ def to_markdown(product: dict, posts: List[dict]) -> str:
         out.append(f"### {p['persona']}｜{p['persona_label']}｜{p['platform']}｜{p['angle']}｜{p['format']}")
         if p["script"]:
             out += ["**台本**", "```", p["script"], "```"]
-        out += ["**投稿文**", "```", p["caption"], "```", ""]
+        out += ["**投稿文**", "```", p["caption"], "```"]
+        if p.get("disclosure"):
+            out.append(f"☑️ {p['disclosure']}")
+        out.append("")
     return "\n".join(out)
