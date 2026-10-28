@@ -6,7 +6,7 @@ import re
 from datetime import date, timedelta
 from typing import List, Optional
 
-from .library import ANGLES, BANNED_PHRASES, CTA, CTA_SHOP, SHOP_SCRIPT_REPLACE, DEFAULT_PLATFORMS, DISCLOSURE, FORMATS, PERSONAS, TEXT_ONLY_PLATFORMS, X_FORMATS, X_QUESTIONS
+from .library import ANGLES, BANNED_PHRASES, CTA, CTA_SHOP, SHOP_SCRIPT_REPLACE, DEFAULT_PLATFORMS, DISCLOSURE, LABEL_PLATFORMS, FORMATS, PERSONAS, TEXT_ONLY_PLATFORMS, X_FORMATS, X_QUESTIONS
 
 URL_PLACEHOLDER = "【URL未設定】"
 X_LIMIT = 140  # 全角換算の目安（URLは別枠で23文字扱い）
@@ -71,7 +71,7 @@ def _points(angle: dict, v: dict) -> List[str]:
 
 def hashtags(p: dict, angle_key: str) -> List[str]:
     angle = ANGLES[angle_key]
-    tags = ["#PR"]
+    tags = []
     tags += [t if t.startswith("#") else "#" + t for t in p.get("hashtags", []) if t]
     if p.get("brand"):
         tags.append("#" + re.sub(r"\s+", "", p["brand"]))
@@ -133,10 +133,10 @@ def _x_post(hook: str, point: str, v: dict, p: dict, angle_key: str, fmt: str, r
     if fmt == "question":
         q = rng.choice(X_QUESTIONS if v["colors"] else X_QUESTIONS[1:])
         colors = f"\n{v['colors']}" if "色" in q else ""
-        return f"{hook}\n\n{q}{colors}\n\n{tags}\n\n――リプ欄に貼る――\n{v['full_name']}{price}\n{deal}\n{url}".replace("\n\n\n", "\n\n")
+        return f"{hook}\n\n{q}{colors}\n\n{tags}\n\n――リプ欄に貼る（返信にはラベルが付かないので#PRを入れる）――\n#PR {v['full_name']}{price}\n{deal}\n{url}".replace("\n\n\n", "\n\n")
     if fmt == "thread":
         reply = "\n".join(x for x in [f"{v['full_name']}{price}", deal, ship, url] if x)
-        return f"【1】{hook}\n\n{point}\n\n↓詳細はリプ欄\n{tags}\n\n【2（リプ）】\n{reply}"
+        return f"【1】{hook}\n\n{point}\n\n↓詳細はリプ欄\n{tags}\n\n【2（リプ）※返信にはラベルが付かないので#PRを入れる】\n#PR {reply}"
     if fmt == "deal" and v["discount"]:
         body = "\n".join(x for x in [hook, "", f"{v['full_name']}", f"通常{v['price']} → このリンクから{v['sale_price']}", ship] if x is not None)
         return f"{body}\n{tags}\n{url}"
@@ -167,9 +167,11 @@ def generate_week(
     x_for_all: bool = True,
     x_per_day: int = 3,
     platforms: Optional[List[str]] = None,
+    pr_text: bool = False,
 ) -> List[dict]:
     """1ペルソナ×1日=動画1本（＋X版）。速報系ペルソナはXを1日 x_per_day 本。
-    platforms で出す媒体を絞る（既定は TikTok と X）。"""
+    platforms で出す媒体を絞る（既定は TikTok と X）。
+    pr_text=True でラベルが付く媒体の本文にも【PR】を入れる（既定はラベルのみ）。"""
     platforms = platforms or DEFAULT_PLATFORMS
     if start is None:
         today = date.today()
@@ -264,8 +266,9 @@ def generate_week(
                 })
 
     for post in posts:
-        # 広告表示はハッシュタグに埋もれない位置（本文の先頭）にも入れる（ステマ規制）
-        post["caption"] = "【PR】" + post["caption"]
+        # ラベルが付く媒体はラベルが広告表示。ラベルのない媒体だけ本文の先頭に【PR】（ステマ規制）
+        if pr_text or not all(pl in LABEL_PLATFORMS for pl in post["platform"].split(" / ")):
+            post["caption"] = "【PR】" + post["caption"]
         post["disclosure"] = " / ".join(DISCLOSURE[pl] for pl in post["platform"].split(" / ") if pl in DISCLOSURE)
     posts.sort(key=lambda x: (x["date"], x["persona"]))
     return posts
@@ -295,7 +298,7 @@ def to_csv(posts: List[dict]) -> str:
 
 def to_markdown(product: dict, posts: List[dict]) -> str:
     out = [f"# {product.get('brand', '')} {product.get('name', '')} 投稿カレンダー", "",
-           "> 投稿文の#PRに加えて、各投稿の ☑️ の広告表示設定を必ずONにすること。", ""]
+           "> 各投稿の ☑️ の広告表示ラベルを必ずONにすること（ラベルが広告表示になるので、ラベルが付く投稿は#PRなし）。", ""]
     if not product.get("url"):
         out += [f"> ⚠️ URL未設定。投稿文中の `{URL_PLACEHOLDER}` を差し替えてください。", ""]
     current = None

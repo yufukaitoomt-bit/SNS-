@@ -52,6 +52,7 @@ class GenerateReq(BaseModel):
     personas: Optional[List[str]] = None
     x_for_all: bool = True
     platforms: Optional[List[str]] = None
+    pr_text: bool = False
 
 
 def _product(pid: Optional[str]) -> dict:
@@ -64,7 +65,7 @@ def _product(pid: Optional[str]) -> dict:
 def _generate(req: GenerateReq):
     p = _product(req.product_id)
     return p, generate_week(p, start=req.start, days=req.days, persona_keys=req.personas,
-                          x_for_all=req.x_for_all, platforms=req.platforms)
+                          x_for_all=req.x_for_all, platforms=req.platforms, pr_text=req.pr_text)
 
 
 @router.get("/api/affiliate/meta")
@@ -246,7 +247,7 @@ pre{white-space:pre-wrap;background:#0f0f0f;border:1px solid #2a2a2a;border-radi
     <div class="checks" id="platforms"></div>
     <label>キャラ（アカウント）</label>
     <div class="checks" id="personas"></div>
-    <div class="checks"><label><input type="checkbox" id="xall" checked>動画キャラのX版も作る</label></div>
+    <div class="checks"><label><input type="checkbox" id="xall" checked>動画キャラのX版も作る</label><label><input type="checkbox" id="prtext">ラベルが付く投稿にも本文に【PR】を入れる</label></div>
     <div class="btns">
       <button class="run" onclick="gen()">生成する</button>
       <button onclick="dl('csv')">CSVダウンロード</button>
@@ -329,7 +330,7 @@ async function delProduct(){
 }
 function req(){
   return {product_id:$('sel').value||null,start:$('start').value||null,days:+$('days').value||7,
-    personas:[...$('personas').querySelectorAll('input:checked')].map(i=>i.value),x_for_all:$('xall').checked,
+    personas:[...$('personas').querySelectorAll('input:checked')].map(i=>i.value),x_for_all:$('xall').checked,pr_text:$('prtext').checked,
     platforms:[...$('platforms').querySelectorAll('input:checked')].map(i=>i.value)};
 }
 async function gen(){

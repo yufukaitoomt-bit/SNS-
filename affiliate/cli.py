@@ -28,6 +28,7 @@ def main():
     w.add_argument("--days", type=int, default=7)
     w.add_argument("--personas", help="例: A,B,E（省略時は全員）")
     w.add_argument("--platforms", help="例: TikTok,X（省略時は TikTok と X）")
+    w.add_argument("--pr-text", action="store_true", help="ラベルが付く投稿にも本文に【PR】を入れる")
     w.add_argument("--no-x", action="store_true", help="動画キャラのX版を作らない")
     w.add_argument("--out", default="out")
     u = sub.add_parser("set-url")
@@ -78,7 +79,7 @@ def main():
         p = store.get(args.product)
         start = date.fromisoformat(args.start) if args.start else None
         personas = args.personas.split(",") if args.personas else None
-        posts = generate_week(p, start=start, days=args.days, persona_keys=personas, x_for_all=not args.no_x,
+        posts = generate_week(p, start=start, days=args.days, persona_keys=personas, x_for_all=not args.no_x, pr_text=args.pr_text,
                              platforms=args.platforms.split(",") if args.platforms else None)
         out = Path(args.out)
         out.mkdir(exist_ok=True)
