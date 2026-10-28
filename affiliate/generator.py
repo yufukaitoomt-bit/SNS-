@@ -298,7 +298,7 @@ def to_csv(posts: List[dict]) -> str:
 
 def to_markdown(product: dict, posts: List[dict]) -> str:
     out = [f"# {product.get('brand', '')} {product.get('name', '')} 投稿カレンダー", "",
-           "> 各投稿の ☑️ の広告表示ラベルを必ずONにすること（ラベルが広告表示になるので、ラベルが付く投稿は#PRなし）。", ""]
+           "> 各投稿の ☑️ の広告表示ラベルは公開ボタンを押す前に必ずONか確認すること（ラベルが広告表示になるので、ラベルが付く投稿は#PRなし）。", ""]
     if not product.get("url"):
         out += [f"> ⚠️ URL未設定。投稿文中の `{URL_PLACEHOLDER}` を差し替えてください。", ""]
     current = None
