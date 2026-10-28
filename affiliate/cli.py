@@ -7,12 +7,14 @@
   python -m affiliate.cli set-url oldorder-turbo-gt https://...   # URL発行後に1回だけ
   python -m affiliate.cli set-discount oldorder-turbo-gt 500      # リンク特典が確定したら
   python -m affiliate.cli activate oldorder-turbo-gt              # 今週売る商品を切り替え
+  python -m affiliate.cli outreach --commission 12 --sender 山田     # クリエイター依頼セット
 """
 import argparse
 from datetime import date
 from pathlib import Path
 
 from . import store
+from . import outreach
 from .generator import generate_week, to_csv, to_markdown
 
 
@@ -34,6 +36,13 @@ def main():
     dc = sub.add_parser("set-discount")
     dc.add_argument("product")
     dc.add_argument("yen", type=int)
+    o = sub.add_parser("outreach")
+    o.add_argument("--product")
+    o.add_argument("--commission", type=float, help="報酬率(%%)")
+    o.add_argument("--deadline", type=int, default=14)
+    o.add_argument("--sender", default="")
+    o.add_argument("--brand-account", default="")
+    o.add_argument("--out", default="out")
     a = sub.add_parser("activate")
     a.add_argument("product")
     args = ap.parse_args()
@@ -56,6 +65,14 @@ def main():
     elif args.cmd == "activate":
         store.set_active(args.product)
         print(f"✅ 今週の商品: {args.product}")
+    elif args.cmd == "outreach":
+        p = store.get(args.product)
+        kit = outreach.build(p, args.commission, args.deadline, args.sender, args.brand_account)
+        out = Path(args.out)
+        out.mkdir(exist_ok=True)
+        (out / f"{p['id']}_outreach.md").write_text(outreach.to_markdown(p, kit), encoding="utf-8")
+        (out / "creator_tracker.csv").write_text(outreach.tracker_csv(), encoding="utf-8")
+        print(f"✅ {out / (p['id'] + '_outreach.md')} / creator_tracker.csv")
     elif args.cmd == "week":
         p = store.get(args.product)
         start = date.fromisoformat(args.start) if args.start else None

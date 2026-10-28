@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 from . import store
+from . import outreach
 from .generator import check_claims, generate_week, to_csv, to_markdown
 from .library import ALL_PLATFORMS, ANGLES, DEFAULT_PLATFORMS, FORMATS, PERSONAS
 
@@ -25,12 +26,22 @@ class Product(BaseModel):
     celebrity: str = ""
     sole_height: str = ""
     size_tip: str = ""
+    tiktok_shop: bool = False
+    shop_price: int = 0
     features: List[str] = []
     colors: List[str] = []
     shipping_note: str = ""
     angles: List[str] = []
     hashtags: List[str] = []
     memo: str = ""
+
+
+class OutreachReq(BaseModel):
+    product_id: Optional[str] = None
+    commission: Optional[float] = None
+    deadline_days: int = 14
+    sender: str = ""
+    brand_account: str = ""
 
 
 class GenerateReq(BaseModel):
@@ -110,6 +121,18 @@ async def export_md(req: GenerateReq):
     p, posts = _generate(req)
     return Response(to_markdown(p, posts), media_type="text/markdown; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{p["id"]}.md"'})
+
+
+@router.post("/api/affiliate/outreach")
+async def outreach_kit(req: OutreachReq):
+    p = _product(req.product_id)
+    return outreach.build(p, req.commission, req.deadline_days, req.sender, req.brand_account)
+
+
+@router.get("/api/affiliate/tracker.csv")
+async def tracker():
+    return Response(outreach.tracker_csv(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="creator_tracker.csv"'})
 
 
 @router.get("/affiliate", response_class=HTMLResponse)
@@ -197,9 +220,11 @@ pre{white-space:pre-wrap;background:#0f0f0f;border:1px solid #2a2a2a;border-radi
       <div class="form-group"><label>公式のサイズ案内（例: ワンサイズ上推奨）</label><input id="size_tip"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>配送などの注意書き</label><input id="shipping_note"></div>
+      <div class="form-group"><label>配送などの注意書き（公式サイト購入時）</label><input id="shipping_note"></div>
       <div class="form-group"><label>追加ハッシュタグ（スペース区切り・#不要）</label><input id="hashtags"></div>
     </div>
+    <div class="checks"><label><input type="checkbox" id="tiktok_shop">TikTok Shopに出店している（TikTok投稿は🛒商品リンクで売る）</label></div>
+    <div class="form-group" style="margin-bottom:10px"><label>TikTok Shopでの価格（公式サイトと違う場合だけ・円）</label><input id="shop_price" type="number"></div>
     <label>訴求軸（チェック順＝優先順。最初が主軸）</label>
     <div class="checks" id="angles"></div>
     <div class="form-group" style="margin-bottom:10px"><label>メモ</label><input id="memo"></div>
@@ -227,6 +252,23 @@ pre{white-space:pre-wrap;background:#0f0f0f;border:1px solid #2a2a2a;border-radi
       <button onclick="dl('md')">Markdownダウンロード</button>
     </div>
     <div class="status" id="g-status"></div>
+  </div>
+  <div class="card">
+    <h2>③ クリエイター依頼セット（TikTok Shop・商品送付あり）</h2>
+    <div class="tip">DM文面と依頼書を、今の商品データから作ります。報酬率が空欄なら【未定】と入ります。依頼書の「使っていただける事実」は商品の特徴・ソール高さ・サイズ案内から入ります（公式の事実だけ）。</div>
+    <div class="form-row">
+      <div class="form-group"><label>報酬率（%）</label><input id="commission" type="number" step="0.5" placeholder="例: 12"></div>
+      <div class="form-group"><label>投稿期限（届いてから◯日）</label><input id="deadline" type="number" value="14"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>担当者名</label><input id="sender"></div>
+      <div class="form-group"><label>ブランドのTikTokアカウント</label><input id="brand_account" placeholder="@old.order_japan.staff"></div>
+    </div>
+    <div class="btns">
+      <button class="run" onclick="kit()">依頼セットを作る</button>
+      <button onclick="location.href='/api/affiliate/tracker.csv'">管理表CSV</button>
+    </div>
+    <div id="kit"></div>
   </div>
   <div id="out"></div>
 </main>
@@ -259,7 +301,8 @@ function toggleAngle(k,on){
   angleOrder=angleOrder.filter(a=>a!==k); if(on)angleOrder.push(k); renderAngles(angleOrder);
 }
 function fill(p){
-  for(const k of ['brand','name','category','celebrity','price','compare_price','discount','sole_height','size_tip','url','shipping_note','memo'])$(k).value=p[k]??'';
+  for(const k of ['brand','name','category','celebrity','price','compare_price','discount','shop_price','sole_height','size_tip','url','shipping_note','memo'])$(k).value=p[k]??'';
+  $('tiktok_shop').checked=!!p.tiktok_shop;
   $('features').value=(p.features||[]).join('\\n');
   $('colors').value=(p.colors||[]).join('\\n');
   $('hashtags').value=(p.hashtags||[]).join(' ');
@@ -270,7 +313,7 @@ function loadForm(){const p=DATA.products.find(x=>x.id===$('sel').value); fill(p
 function newForm(){$('sel').dataset.editing=''; fill({category:'スニーカー'});}
 async function saveProduct(){
   const body={id:$('sel').dataset.editing||null,brand:$('brand').value.trim(),name:$('name').value.trim(),category:$('category').value.trim()||'スニーカー',
-    celebrity:$('celebrity').value.trim(),sole_height:$('sole_height').value.trim(),size_tip:$('size_tip').value.trim(),price:+$('price').value||0,compare_price:+$('compare_price').value||0,discount:+$('discount').value||0,url:$('url').value.trim(),
+    celebrity:$('celebrity').value.trim(),sole_height:$('sole_height').value.trim(),size_tip:$('size_tip').value.trim(),tiktok_shop:$('tiktok_shop').checked,price:+$('price').value||0,compare_price:+$('compare_price').value||0,discount:+$('discount').value||0,shop_price:+$('shop_price').value||0,url:$('url').value.trim(),
     features:lines($('features').value),colors:lines($('colors').value),shipping_note:$('shipping_note').value.trim(),
     hashtags:$('hashtags').value.split(/\\s+/).map(t=>t.replace(/^#/,'')).filter(Boolean),angles:angleOrder,memo:$('memo').value.trim()};
   if(!body.brand||!body.name)return alert('ブランドと商品名は必須です');
@@ -301,6 +344,14 @@ async function gen(){
       +(p.disclosure?`<div class="sub warn">☑️ ${esc(p.disclosure)}</div>`:'')+`</div>`;
   });
   $('out').innerHTML=html;
+}
+async function kit(){
+  const r=await fetch('/api/affiliate/outreach',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    product_id:$('sel').value||null,commission:+$('commission').value||null,deadline_days:+$('deadline').value||14,
+    sender:$('sender').value.trim(),brand_account:$('brand_account').value.trim()})});
+  const k=await r.json();
+  const parts=[['① 最初のDM','dm_first'],['② 返信がないとき（5日後に1回だけ）','dm_followup'],['③ OKをもらったら','dm_accepted'],['④ 依頼書（③と一緒に送る）','brief']];
+  $('kit').innerHTML=parts.map(([t,key])=>`<div class="sub">${t}</div><pre id="k_${key}">${esc(k[key])}</pre><button class="copy" onclick="cp('k_${key}')">コピー</button>`).join('');
 }
 function cp(id){navigator.clipboard.writeText($(id).textContent);}
 async function dl(kind){

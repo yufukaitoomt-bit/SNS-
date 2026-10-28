@@ -6,7 +6,7 @@ import re
 from datetime import date, timedelta
 from typing import List, Optional
 
-from .library import ANGLES, BANNED_PHRASES, CTA, DEFAULT_PLATFORMS, DISCLOSURE, FORMATS, PERSONAS, TEXT_ONLY_PLATFORMS, X_FORMATS, X_QUESTIONS
+from .library import ANGLES, BANNED_PHRASES, CTA, CTA_SHOP, SHOP_SCRIPT_REPLACE, DEFAULT_PLATFORMS, DISCLOSURE, FORMATS, PERSONAS, TEXT_ONLY_PLATFORMS, X_FORMATS, X_QUESTIONS
 
 URL_PLACEHOLDER = "【URL未設定】"
 X_LIMIT = 140  # 全角換算の目安（URLは別枠で23文字扱い）
@@ -101,16 +101,25 @@ def _angles_for(persona: dict, product: dict) -> List[str]:
     return overlap
 
 
-def _caption(hook: str, points: List[str], v: dict, p: dict, tone: str, rng: random.Random, tags: List[str]) -> str:
+def _caption(hook: str, points: List[str], v: dict, p: dict, tone: str, rng: random.Random,
+             tags: List[str], shop: bool = False) -> str:
+    """shop=True は TikTok Shop の🛒商品リンク付き投稿。リンク特典と公式サイトの配送注意は付けない。"""
     lines = [hook, ""]
-    lines += [f"・{pt}" for pt in points[:3]]
-    lines += ["", f"{v['full_name']}（{v['price']}）" if v["price"] else v["full_name"]]
-    if v["discount"]:
+    lines += [f"・{pt}" for pt in points[:3] if not (shop and v["discount"] and v["discount"] in pt)]
+    price = _yen(p.get("shop_price")) if shop and p.get("shop_price") else v["price"]
+    lines += ["", f"{v['full_name']}（{price}）" if price else v["full_name"]]
+    if v["discount"] and not shop:
         lines.append(_deal_line(v, "プロフィールのリンク"))
-    if p.get("shipping_note"):
+    if p.get("shipping_note") and not shop:
         lines.append(f"※{p['shipping_note']}")
-    lines += [rng.choice(CTA[tone]), "", " ".join(tags)]
+    lines += [rng.choice((CTA_SHOP if shop else CTA)[tone]), "", " ".join(tags)]
     return "\n".join(lines)
+
+
+def _shop_script(script: str, name: str) -> str:
+    for a, b in SHOP_SCRIPT_REPLACE:
+        script = script.replace(a, b)
+    return f"{script}\n投稿時: 🛒商品リンクに「{name}」を追加"
 
 
 def _x_post(hook: str, point: str, v: dict, p: dict, angle_key: str, fmt: str, rng: random.Random) -> str:
@@ -215,18 +224,28 @@ def generate_week(
                     })
                 continue
 
+            shop = bool(product.get("tiktok_shop")) and "TikTok" in video_platforms
+            if shop and angle_key == "discount":  # リンク特典はTikTok Shopの🛒では使えないので別の軸に
+                angle_key = next((a for a in angle_keys[d + 1:] + angle_keys if a != "discount"), angle_key)
+                angle = ANGLES[angle_key]
+                points = _points(angle, v) or [v["name"]]
             fkey = persona["formats"][d % len(persona["formats"])]
             hook = pick_hook(angle_key, v)
             point = rng.choice(points)
             script_vars = {**v, "hook": hook, "point": point}
             script = "\n".join(s.format_map(script_vars) for s in FORMATS[fkey]["script"])
             tags = hashtags(product, angle_key)
-            if video_platforms:
+            groups = [(["TikTok"], True), ([pl for pl in video_platforms if pl != "TikTok"], False)] if shop \
+                else [(video_platforms, False)]
+            for pls, is_shop in groups:
+                if not pls:
+                    continue
                 posts.append({
                     "date": day_label, "persona": pk, "persona_label": persona["label"],
-                    "platform": " / ".join(video_platforms), "angle": angle["label"],
-                    "format": FORMATS[fkey]["label"], "hook": hook, "script": script,
-                    "caption": _caption(hook, points, v, product, persona["tone"], rng, tags),
+                    "platform": " / ".join(pls), "angle": angle["label"],
+                    "format": FORMATS[fkey]["label"] + ("（🛒商品リンク）" if is_shop else ""), "hook": hook,
+                    "script": _shop_script(script, v["name"]) if is_shop else script,
+                    "caption": _caption(hook, points, v, product, persona["tone"], rng, tags, shop=is_shop),
                     "hashtags": " ".join(tags),
                 })
             if x_on:
