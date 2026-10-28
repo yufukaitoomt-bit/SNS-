@@ -264,6 +264,8 @@ def generate_week(
                 })
 
     for post in posts:
+        # 広告表示はハッシュタグに埋もれない位置（本文の先頭）にも入れる（ステマ規制）
+        post["caption"] = "【PR】" + post["caption"]
         post["disclosure"] = " / ".join(DISCLOSURE[pl] for pl in post["platform"].split(" / ") if pl in DISCLOSURE)
     posts.sort(key=lambda x: (x["date"], x["persona"]))
     return posts
