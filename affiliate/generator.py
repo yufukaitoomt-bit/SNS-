@@ -138,7 +138,10 @@ def _x_post(hook: str, point: str, v: dict, p: dict, angle_key: str, fmt: str, r
         reply = "\n".join(x for x in [f"{v['full_name']}{price}", deal, ship, url] if x)
         return f"【1】{hook}\n\n{point}\n\n↓詳細はリプ欄\n{tags}\n\n【2（リプ）※返信にはラベルが付かないので#PRを入れる】\n#PR {reply}"
     if fmt == "deal" and v["discount"]:
-        body = "\n".join(x for x in [hook, "", f"{v['full_name']}", f"通常{v['price']} → このリンクから{v['sale_price']}", ship] if x is not None)
+        lines = [hook, f"{v['full_name']}", f"通常{v['price']} → このリンクから{v['sale_price']}"]
+        body = "\n".join(lines + ([ship] if ship else []))
+        if len(body) > X_LIMIT - 55:
+            body = "\n".join(lines)
         return f"{body}\n{tags}\n{url}"
 
     lines = [hook, "", point, f"{v['full_name']}{price}"]
@@ -147,7 +150,7 @@ def _x_post(hook: str, point: str, v: dict, p: dict, angle_key: str, fmt: str, r
     if ship:
         lines.append(ship)
     body = "\n".join(lines)
-    if len(body) > X_LIMIT - 30:  # 長すぎる場合はポイント行と注意書きを落とす
+    if len(body) > X_LIMIT - 55:  # 1行目の紹介プログラム表記とURL(23字)の分を空けておく  # 長すぎる場合はポイント行と注意書きを落とす
         body = "\n".join([hook, f"{v['full_name']}{price}"] + ([deal] if deal else []))
     return f"{body}\n{tags}\n{url}"
 
@@ -168,11 +171,14 @@ def generate_week(
     x_per_day: int = 3,
     platforms: Optional[List[str]] = None,
     pr_text: bool = False,
+    tieup_line: Optional[str] = None,
 ) -> List[dict]:
     """1ペルソナ×1日=動画1本（＋X版）。速報系ペルソナはXを1日 x_per_day 本。
     platforms で出す媒体を絞る（既定は TikTok と X）。
     pr_text=True でラベルが付く媒体の本文にも【PR】を入れる（既定はラベルのみ）。"""
     platforms = platforms or DEFAULT_PLATFORMS
+    tieup_line = tieup_line or f"※{product.get('brand', '')}の紹介プログラムに参加して紹介しています"
+    x_tieup_line = f"※{product.get('brand', '')}の紹介プログラム参加中"  # Xは文字数が厳しいので短く
     if start is None:
         today = date.today()
         start = today + timedelta(days=(7 - today.weekday()) % 7 or 7)  # 次の月曜
@@ -266,9 +272,12 @@ def generate_week(
                 })
 
     for post in posts:
-        # ラベルが付く媒体はラベルが広告表示。ラベルのない媒体だけ本文の先頭に【PR】（ステマ規制）
+        # 広告表示（ステマ規制）: ラベルが付く媒体はラベル＋1行目の自然な一文、ラベルのない媒体は【PR】
         if pr_text or not all(pl in LABEL_PLATFORMS for pl in post["platform"].split(" / ")):
             post["caption"] = "【PR】" + post["caption"]
+        else:
+            line = x_tieup_line if post["platform"] == "X" else tieup_line
+            post["caption"] = f"{line}\n{post['caption']}"
         post["disclosure"] = " / ".join(DISCLOSURE[pl] for pl in post["platform"].split(" / ") if pl in DISCLOSURE)
     posts.sort(key=lambda x: (x["date"], x["persona"]))
     return posts
