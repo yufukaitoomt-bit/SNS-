@@ -42,6 +42,7 @@ class OutreachReq(BaseModel):
     deadline_days: int = 14
     sender: str = ""
     brand_account: str = ""
+    perks: List[str] = []
 
 
 class GenerateReq(BaseModel):
@@ -126,7 +127,7 @@ async def export_md(req: GenerateReq):
 @router.post("/api/affiliate/outreach")
 async def outreach_kit(req: OutreachReq):
     p = _product(req.product_id)
-    return outreach.build(p, req.commission, req.deadline_days, req.sender, req.brand_account)
+    return outreach.build(p, req.commission, req.deadline_days, req.sender, req.brand_account, req.perks)
 
 
 @router.get("/api/affiliate/tracker.csv")
@@ -264,6 +265,7 @@ pre{white-space:pre-wrap;background:#0f0f0f;border:1px solid #2a2a2a;border-radi
       <div class="form-group"><label>担当者名</label><input id="sender"></div>
       <div class="form-group"><label>ブランドのTikTokアカウント</label><input id="brand_account" placeholder="@old.order_japan.staff"></div>
     </div>
+    <div class="form-group" style="margin-bottom:10px"><label>売れた人向けの特典（1行1つ。会社で決まったものだけ）</label><textarea id="perks" placeholder="例: 月10足以上売れたら、翌月の報酬率を15%に&#10;例: 月間販売数1位の方に新作を1足プレゼント"></textarea></div>
     <div class="btns">
       <button class="run" onclick="kit()">依頼セットを作る</button>
       <button onclick="location.href='/api/affiliate/tracker.csv'">管理表CSV</button>
@@ -348,9 +350,9 @@ async function gen(){
 async function kit(){
   const r=await fetch('/api/affiliate/outreach',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     product_id:$('sel').value||null,commission:+$('commission').value||null,deadline_days:+$('deadline').value||14,
-    sender:$('sender').value.trim(),brand_account:$('brand_account').value.trim()})});
+    sender:$('sender').value.trim(),brand_account:$('brand_account').value.trim(),perks:lines($('perks').value)})});
   const k=await r.json();
-  const parts=[['① 最初のDM','dm_first'],['② 返信がないとき（5日後に1回だけ）','dm_followup'],['③ OKをもらったら','dm_accepted'],['④ 依頼書（③と一緒に送る）','brief']];
+  const parts=[['① 最初のDM','dm_first'],['② 返信がないとき（5日後に1回だけ）','dm_followup'],['③ OKをもらったら','dm_accepted'],['④ 依頼書（③と一緒に送る）','brief'],['⑤ 月1回の結果報告','dm_report']];
   $('kit').innerHTML=parts.map(([t,key])=>`<div class="sub">${t}</div><pre id="k_${key}">${esc(k[key])}</pre><button class="copy" onclick="cp('k_${key}')">コピー</button>`).join('');
 }
 function cp(id){navigator.clipboard.writeText($(id).textContent);}

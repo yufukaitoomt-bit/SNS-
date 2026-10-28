@@ -42,6 +42,7 @@ def main():
     o.add_argument("--deadline", type=int, default=14)
     o.add_argument("--sender", default="")
     o.add_argument("--brand-account", default="")
+    o.add_argument("--perk", action="append", default=[], help="売れた人向けの特典（複数可）")
     o.add_argument("--out", default="out")
     a = sub.add_parser("activate")
     a.add_argument("product")
@@ -67,7 +68,7 @@ def main():
         print(f"✅ 今週の商品: {args.product}")
     elif args.cmd == "outreach":
         p = store.get(args.product)
-        kit = outreach.build(p, args.commission, args.deadline, args.sender, args.brand_account)
+        kit = outreach.build(p, args.commission, args.deadline, args.sender, args.brand_account, args.perk)
         out = Path(args.out)
         out.mkdir(exist_ok=True)
         (out / f"{p['id']}_outreach.md").write_text(outreach.to_markdown(p, kit), encoding="utf-8")

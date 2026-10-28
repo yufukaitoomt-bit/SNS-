@@ -15,6 +15,7 @@ python -m affiliate.cli list
 python -m affiliate.cli week --start 2026-10-19          # out/ にCSVとMarkdown
 python -m affiliate.cli set-url oldorder-turbo-gt https://...
 python -m affiliate.cli activate <商品ID>
+python -m affiliate.cli outreach --commission 12 --perk "月10足以上で翌月15%"   # クリエイター依頼セット
 ```
 
 ## 編集する場所

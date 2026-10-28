@@ -30,14 +30,16 @@ def _facts(p: dict) -> list:
 
 
 def build(p: dict, commission: Optional[float] = None, deadline_days: int = 14,
-          sender: str = "", brand_account: str = "") -> dict:
-    """commission は%（例: 12）。None なら【未定】。"""
+          sender: str = "", brand_account: str = "", perks: Optional[list] = None) -> dict:
+    """commission は%（例: 12）。None なら【未定】。perks は売れた人向けの特典（1行1つ）。"""
+    perks = [x for x in (perks or []) if x]
     name = f"{p.get('brand', '')} {p.get('name', '')}".strip()
     rate = f"{commission:g}%" if commission else TBD
     sender = sender or "【担当者名】"
     account = f"（{brand_account}）" if brand_account else ""
     facts = _facts(p) or ["【公式サイトに書いてある事実を入れる】"]
 
+    perk_line = "・たくさん売れた方には、報酬アップなどの特典もあります\n" if perks else ""
     dm_first = f"""はじめまして、{p.get('brand', '')}{account}のPR担当の{sender}です。
 いつも投稿を拝見していて、コーデの雰囲気が私たちのスニーカーにぴったりだと思いご連絡しました。
 
@@ -45,7 +47,7 @@ TikTok Shopで「{name}」を紹介していただけるクリエイターさん
 ・商品を1足お送りします（返却不要。サイズとカラーを選べます）
 ・動画の🛒商品リンク経由で売れた分は、売上の{rate}が報酬として入ります
 ・お願いしたいのは、届いてから{deadline_days}日以内に🛒商品リンク付きの動画を1本投稿していただくことです
-
+{perk_line}
 ご興味があれば、お気軽にお返事ください！"""
 
     dm_followup = f"""先日ご連絡した{p.get('brand', '')}の{sender}です。
@@ -61,6 +63,7 @@ TikTok Shopで「{name}」を紹介していただけるクリエイターさん
 発送したらご連絡します。投稿のお願い事項を下にまとめたので、届く前に目を通していただけると助かります。"""
 
     fact_lines = "\n".join(f"・{f}" for f in facts)
+    perk_block = ("■ たくさん売れた方への特典\n" + "\n".join(f"・{x}" for x in perks) + "\n\n") if perks else ""
     brief = f"""【{name} 投稿のお願い】
 
 ■ 投稿内容
@@ -83,11 +86,24 @@ TikTok Shopで「{name}」を紹介していただけるクリエイターさん
 ■ 報酬
 ・🛒商品リンク経由の売上の{rate}（TikTok Shopから自動で支払われます）
 
-■ その他
+{perk_block}■ その他
 ・商品は返却不要です
 ・動画を{p.get('brand', '')}の公式アカウントや広告で使わせていただく場合は、事前にご相談します"""
 
-    return {"dm_first": dm_first, "dm_followup": dm_followup, "dm_accepted": dm_accepted, "brief": brief}
+    perk_note = ("\n\n特典の条件はこちらです。\n" + "\n".join(f"・{x}" for x in perks)) if perks else ""
+    dm_report = f"""【{name} 今月の結果】
+いつもありがとうございます！今月の🛒商品リンク経由の結果です。
+
+・販売数: 【◯】足
+・報酬: 【¥◯】
+・いちばん売れた動画: 【URL】（【◯】足）
+
+【この動画のどこが良かったか、ひとこと】{perk_note}
+
+来月も楽しみにしています！"""
+
+    return {"dm_first": dm_first, "dm_followup": dm_followup, "dm_accepted": dm_accepted,
+            "brief": brief, "dm_report": dm_report}
 
 
 def tracker_csv() -> str:
@@ -98,7 +114,8 @@ def tracker_csv() -> str:
 
 def to_markdown(p: dict, kit: dict) -> str:
     sections = [("① 最初のDM", "dm_first"), ("② 返信がないとき（5日後に1回だけ）", "dm_followup"),
-                ("③ OKをもらったら", "dm_accepted"), ("④ 依頼書（③と一緒に送る）", "brief")]
+                ("③ OKをもらったら", "dm_accepted"), ("④ 依頼書（③と一緒に送る）", "brief"),
+                ("⑤ 月1回の結果報告", "dm_report")]
     out = [f"# {p.get('brand', '')} {p.get('name', '')} クリエイター依頼セット（TikTok Shop）", ""]
     if TBD in kit["dm_first"]:
         out += [f"> ⚠️ 報酬率が {TBD} のままです。決まったら埋めてから送ってください。", ""]
