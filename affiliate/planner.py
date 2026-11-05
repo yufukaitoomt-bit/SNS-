@@ -46,7 +46,7 @@ def profile(account_id: str) -> str:
 
 def _oo_days(n: int, offset: int) -> List[int]:
     """1週間(0-6)のうちOLD ORDERを出す日。アカウントごとにずらして同じ日に固まらないようにする。"""
-    base = {1: [3], 2: [1, 4], 3: [0, 2, 5]}.get(n, [3])
+    base = {1: [3], 2: [1, 4], 3: [0, 2, 5], 4: [0, 2, 4, 6], 5: [0, 1, 3, 4, 6], 6: [0, 1, 2, 3, 4, 6], 7: list(range(7))}.get(n, [3])
     return sorted((d + offset) % 7 for d in base)
 
 
@@ -95,7 +95,14 @@ def plan_week(account_id: str, product: dict, start: date, week_index: int = 0,
             oi += 1
             angle_key = post.get("angle", a["angles"][0])
             v = product_vars(product, rng)
-            pool = [h for h in _usable(ANGLES[angle_key]["hooks"], v) if h not in used_hooks] or [v["name"]]
+            # その軸のフックを使い切ったら、アカウントの他の軸から選ぶ（同じ週に同じ書き出しを出さない）
+            for ak in [angle_key] + [x for x in a["angles"] + list(ANGLES) if x != angle_key]:
+                pool = [h for h in _usable(ANGLES[ak]["hooks"], v) if h not in used_hooks]
+                if pool:
+                    angle_key = ak
+                    break
+            else:
+                pool = [v["name"]]
             hook = rng.choice(pool)
             used_hooks.add(hook)
             points = _points(ANGLES[angle_key], v) or [v["name"]]
