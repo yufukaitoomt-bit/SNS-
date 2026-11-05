@@ -8,13 +8,14 @@
   python -m affiliate.cli set-discount oldorder-turbo-gt 500      # リンク特典が確定したら
   python -m affiliate.cli activate oldorder-turbo-gt              # 今週売る商品を切り替え
   python -m affiliate.cli outreach --commission 12 --sender 山田     # クリエイター依頼セット
+  python -m affiliate.cli plan --start 2026-11-09                   # テーマ別アカウント9つの1週間分
 """
 import argparse
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from . import store
-from . import outreach
+from . import outreach, planner
 from .generator import generate_week, to_csv, to_markdown
 
 
@@ -45,6 +46,12 @@ def main():
     o.add_argument("--brand-account", default="")
     o.add_argument("--perk", action="append", default=[], help="売れた人向けの特典（複数可）")
     o.add_argument("--out", default="out")
+    pl = sub.add_parser("plan")
+    pl.add_argument("--product")
+    pl.add_argument("--start", help="開始日 YYYY-MM-DD（省略時は次の月曜）")
+    pl.add_argument("--week", type=int, default=0, help="何週目か（お手入れ回などの周期に使う）")
+    pl.add_argument("--accounts", help="例: black,kstreet（省略時は全部）")
+    pl.add_argument("--out", default="out")
     a = sub.add_parser("activate")
     a.add_argument("product")
     args = ap.parse_args()
@@ -75,6 +82,21 @@ def main():
         (out / f"{p['id']}_outreach.md").write_text(outreach.to_markdown(p, kit), encoding="utf-8")
         (out / "creator_tracker.csv").write_text(outreach.tracker_csv(), encoding="utf-8")
         print(f"✅ {out / (p['id'] + '_outreach.md')} / creator_tracker.csv")
+    elif args.cmd == "plan":
+        p = store.get(args.product)
+        if args.start:
+            start = date.fromisoformat(args.start)
+        else:
+            today = date.today()
+            start = today + timedelta(days=(7 - today.weekday()) % 7 or 7)
+        ids = args.accounts.split(",") if args.accounts else list(planner.ACCOUNTS)
+        rows = planner.plan_all(p, start, args.week, ids)
+        out = Path(args.out)
+        out.mkdir(exist_ok=True)
+        (out / f"plan_{start.isoformat()}.csv").write_text(planner.to_csv(rows), encoding="utf-8")
+        for aid in ids:
+            (out / f"{aid}_{start.isoformat()}.md").write_text(planner.to_markdown(aid, rows), encoding="utf-8")
+        print(f"✅ {len(ids)}アカウント・{len(rows)}件 → {out}/")
     elif args.cmd == "week":
         p = store.get(args.product)
         start = date.fromisoformat(args.start) if args.start else None

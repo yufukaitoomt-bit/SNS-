@@ -1,0 +1,207 @@
+"""テーマ別アカウント（ホビ垢・関係なさそう系）の定義。
+
+共通ルール（法務チェック済み）:
+- 架空の個人を装わない。中の人は「スタッフ（チーム）」
+- プロフィールに運用者を書く。OLD ORDERが出る投稿だけ、1行目に広告表示（OO_DISCLOSURE）
+- 他社の画像・ロゴは使わない（自分で撮影 or 各SNSの共有・引用機能）。他社を下げない
+- 体験していない体験談・根拠のない最上級・他店比較は書かない
+- 他社の情報（発売日・価格・イベント）は公式発表で確認してから出す → 下書きでは【要確認】
+
+posts の oo=True はOLD ORDERを出す枠。oo_per_week は1週間に出す回数。
+"""
+
+PLATFORMS = ["TikTok", "Instagram", "X", "YouTube"]
+
+OO_DISCLOSURE = "【PR】OLD ORDERスタッフ運用"
+BIO_FOOTER = "OLD ORDERスタッフ（チーム）運用｜OLD ORDERの投稿は#PR"
+
+# 全アカウント共通で、たまに入れる投稿の型
+SHARED_POSTS = {
+    "care": {"label": "お手入れ", "oo": False,
+             "brief": "スニーカーの手入れ1テーマ（例: 白ソールの汚れ落とし／雨の日の後の乾かし方／保管）。手順3〜5個。特定の商品の効果は言わない"},
+    "size": {"label": "サイズ早見表", "oo": True, "angle": "review",
+             "brief": "公式のサイズ案内とソールの高さ（公式表記）を図解。数値は商品データの公式情報だけ"},
+}
+
+ACCOUNTS = {
+    "zukan": {
+        "name": "厚底スニーカー図鑑",
+        "group": "関係なさそう系",
+        "concept": "国内外の厚底・ボリューム系スニーカーを、雑誌・メディア調の図解でまとめる",
+        "bio": "国内外の厚底・ボリュームスニーカーを図解でまとめる図鑑",
+        "angles": ["unique", "street", "legs"],
+        "oo_per_week": 2,
+        "posts": [
+            {"key": "pick5", "label": "テーマ別5選", "oo": False,
+             "brief": "テーマ（例: 黒の厚底／2万円台／ソール5cm以上）で5足。各足: ブランド・モデル名・価格・特徴1行【要確認】"},
+            {"key": "spec", "label": "スペック比較", "oo": False,
+             "brief": "2〜3足のソールの高さ・重さ・価格を表で比較（各社公式の数値のみ）【要確認】"},
+            {"key": "new", "label": "今月の新作", "oo": False,
+             "brief": "今月発売の厚底スニーカー（他社）。発売日・価格は公式発表で確認【要確認】"},
+            {"key": "oo_pick", "label": "5選の中にOLD ORDER", "oo": True, "angle": "unique",
+             "brief": "テーマ別5選の1足としてOLD ORDERを入れる。OLD ORDERの欄に『スタッフの推し』と書く"},
+        ],
+        "shared": ["size", "care"],
+        "visual": "白とグレー基調、雑誌の図鑑ページ風。商品は切り抜き写真＋スペック表",
+    },
+    "kstreet": {
+        "name": "韓国ストリート研究部",
+        "group": "ホビ垢",
+        "concept": "韓国っぽいストリートコーデの配色・シルエット・ブランドを研究するホビ垢",
+        "bio": "韓国っぽストリートコーデの配色とシルエットを研究する趣味垢",
+        "angles": ["korean", "y2k", "street"],
+        "oo_per_week": 2,
+        "posts": [
+            {"key": "palette", "label": "配色研究", "oo": False,
+             "brief": "韓国っぽい配色を1パターン（例: チャコール×アイボリー）。トップス・ボトムス・靴の色の組み合わせ"},
+            {"key": "silhouette", "label": "シルエット研究", "oo": False,
+             "brief": "ワイドパンツ×ボリューム靴など、形のバランスを図解。ブランドは問わない"},
+            {"key": "brands", "label": "韓国ブランドまとめ", "oo": False,
+             "brief": "韓国ストリート系ブランドを3つ紹介（名前・系統・価格帯）【要確認】"},
+            {"key": "oo_outfit", "label": "足元にOLD ORDER", "oo": True, "angle": "korean",
+             "brief": "韓国っぽコーデの足元としてOLD ORDERを提案（こう合わせるとこう見える）"},
+        ],
+        "shared": ["care"],
+        "visual": "くすみカラー、余白多め、韓国の雑誌っぽいレイアウト",
+    },
+    "black": {
+        "name": "黒スニーカーしか履かない部",
+        "group": "ホビ垢",
+        "concept": "黒いスニーカーだけを集めて語る、尖ったテーマのホビ垢",
+        "bio": "黒いスニーカーしか履かない人の趣味垢。黒×黒の合わせ方も",
+        "angles": ["street", "unique"],
+        "oo_per_week": 2,
+        "posts": [
+            {"key": "today", "label": "今日の黒い1足", "oo": False,
+             "brief": "黒スニーカー1足（他社・私物）。写真は自分で撮影。モデル名・特徴【要確認】"},
+            {"key": "allblack", "label": "黒×黒コーデ", "oo": False,
+             "brief": "全身黒の合わせ方1パターン（素材の変え方・小物）"},
+            {"key": "black_care", "label": "黒スニーカーの色あせ対策", "oo": False,
+             "brief": "黒が白っぽくならない手入れ・保管のコツ（一般的な方法のみ）"},
+            {"key": "oo_black", "label": "OLD ORDERの黒", "oo": True, "angle": "street",
+             "brief": "Destroyed Black / All Black を『今日の黒い1足』として紹介"},
+        ],
+        "shared": ["size", "care"],
+        "visual": "黒背景、モノクロ写真、白い細字",
+    },
+    "atsuzoko": {
+        "name": "厚底スニーカー部",
+        "group": "ホビ垢",
+        "concept": "厚底・ボリューム系スニーカー好きの趣味垢。今日の1足・買い物記録",
+        "bio": "厚底・ボリュームスニーカー好きの趣味垢｜今日の1足と新作メモ",
+        "angles": ["legs", "unique", "y2k"],
+        "oo_per_week": 2,
+        "posts": [
+            {"key": "today", "label": "今日の1足", "oo": False,
+             "brief": "厚底スニーカー1足（他社・私物）。写真は自分で撮影【要確認】"},
+            {"key": "memo", "label": "新作メモ", "oo": False,
+             "brief": "気になる新作の発売情報（他社）。公式発表で確認【要確認】"},
+            {"key": "height", "label": "ソールの高さくらべ", "oo": False,
+             "brief": "厚底の高さを定規の図で比較（各社公式の数値のみ）【要確認】"},
+            {"key": "oo_today", "label": "今日の1足: OLD ORDER", "oo": True, "angle": "legs",
+             "brief": "『今日の1足』としてTURBO GTを紹介。ソールの高さは公式表記"},
+        ],
+        "shared": ["size", "care"],
+        "visual": "明るい色、手書き風の文字、ゆるい趣味垢っぽさ",
+    },
+    "weekend": {
+        "name": "週末どこ行く？",
+        "group": "関係なさそう系",
+        "concept": "東京・大阪・名古屋の週末のポップアップ・イベント・新店情報",
+        "bio": "東京・大阪・名古屋の週末ポップアップ／イベント／新店まとめ",
+        "angles": ["unique"],
+        "oo_per_week": 1,
+        "posts": [
+            {"key": "popup", "label": "今週末のポップアップ", "oo": False,
+             "brief": "今週末の注目ポップアップ3つ（場所・日程・内容）。各社の公式発表で確認【要確認】"},
+            {"key": "event", "label": "イベントまとめ", "oo": False,
+             "brief": "週末のイベント（展示・フリマ・音楽）3つ【要確認】"},
+            {"key": "newshop", "label": "新店オープン", "oo": False,
+             "brief": "今月オープンのお店（ファッション・カフェ）【要確認】"},
+            {"key": "oo_store", "label": "OLD ORDERの店舗・ポップアップ", "oo": True, "angle": "unique",
+             "brief": "OLD ORDERの店舗（原宿・大阪・名古屋PARCO）やポップアップを、イベント情報の1つとして紹介"},
+        ],
+        "shared": [],
+        "visual": "地図とカレンダーのモチーフ、情報誌っぽい",
+    },
+    "furugi": {
+        "name": "古着屋めぐり",
+        "group": "関係なさそう系",
+        "concept": "古着屋の巡り方・掘り出し方・古着コーデ",
+        "bio": "古着屋めぐりの記録と、古着の合わせ方メモ",
+        "angles": ["y2k", "street"],
+        "oo_per_week": 1,
+        "posts": [
+            {"key": "shop", "label": "古着屋の巡り方", "oo": False,
+             "brief": "街ごとの古着屋の回り方（エリア・ジャンル）。店名は公式情報で確認【要確認】"},
+            {"key": "dig", "label": "掘り出し方のコツ", "oo": False,
+             "brief": "古着の選び方1テーマ（サイズ表記の読み方・状態の見方）"},
+            {"key": "outfit", "label": "古着コーデ", "oo": False,
+             "brief": "古着アイテム1つを主役にしたコーデ（写真は自分で撮影）"},
+            {"key": "oo_furugi", "label": "古着×OLD ORDER", "oo": True, "angle": "y2k",
+             "brief": "古着コーデの足元としてOLD ORDERを提案"},
+        ],
+        "shared": ["care"],
+        "visual": "フィルム写真風、ざらっとした質感",
+    },
+    "oshikatsu": {
+        "name": "推し活の日の服",
+        "group": "関係なさそう系",
+        "concept": "ライブ・イベントに行く日の服装と持ち物（アイドル本人の画像・名前で集客しない）",
+        "bio": "ライブ・イベントに行く日の服と持ち物メモ",
+        "angles": ["korean"],
+        "oo_per_week": 1,
+        "posts": [
+            {"key": "items", "label": "持ち物リスト", "oo": False,
+             "brief": "ライブ・イベントの日の持ち物チェックリスト"},
+            {"key": "season", "label": "季節別の参戦服", "oo": False,
+             "brief": "季節・会場（屋内／屋外）ごとの服装の考え方"},
+            {"key": "color", "label": "推し色コーデ", "oo": False,
+             "brief": "推しのメンバーカラーを取り入れる配色例（特定のアイドル名・画像は使わない）"},
+            {"key": "oo_live", "label": "参戦の足元", "oo": True, "angle": "korean",
+             "brief": "参戦コーデの足元としてOLD ORDERを提案（『疲れない』など効果は言わない）"},
+        ],
+        "shared": ["care"],
+        "visual": "パステル、チェックリスト風",
+    },
+    "campus": {
+        "name": "大学生の1週間コーデ",
+        "group": "関係なさそう系",
+        "concept": "通学コーデを曜日ごとに。着回しと予算の工夫",
+        "bio": "大学生の通学コーデを1週間ぶん。着回しと予算の工夫",
+        "angles": ["price", "korean"],
+        "oo_per_week": 1,
+        "posts": [
+            {"key": "week", "label": "月〜金の着回し", "oo": False,
+             "brief": "少ないアイテムで5日分の着回し（ブランドは問わない）"},
+            {"key": "budget", "label": "予算別コーデ", "oo": False,
+             "brief": "1万円／3万円で揃える通学コーデの考え方（価格は各社公式で確認）【要確認】"},
+            {"key": "rain", "label": "雨の日の通学", "oo": False,
+             "brief": "雨の日の服と靴の選び方（一般的な工夫）"},
+            {"key": "oo_campus", "label": "通学の足元", "oo": True, "angle": "price",
+             "brief": "1週間のうち1日の足元としてOLD ORDERを提案"},
+        ],
+        "shared": ["care"],
+        "visual": "カレンダー風、曜日ごとのコマ割り",
+    },
+    "ashimoto": {
+        "name": "街の足元図鑑",
+        "group": "関係なさそう系",
+        "concept": "街ごとによく見る靴の系統をイラスト・コラージュで解説（実在の通行人は撮らない）",
+        "bio": "原宿・心斎橋・栄…街ごとの足元の系統をイラストで図鑑に",
+        "angles": ["street", "korean"],
+        "oo_per_week": 1,
+        "posts": [
+            {"key": "town", "label": "街別の足元系統", "oo": False,
+             "brief": "1つの街でよく見る靴の系統3つをイラストで（特定の人物は描かない）"},
+            {"key": "trend", "label": "系統の解説", "oo": False,
+             "brief": "スニーカーの系統1つ（例: ダッドシューズ系）の特徴と合う服"},
+            {"key": "season", "label": "季節の足元", "oo": False,
+             "brief": "季節ごとに増える靴の系統（一般的な傾向として。数字は出さない）"},
+            {"key": "oo_style", "label": "系統の1つにOLD ORDER", "oo": True, "angle": "street",
+             "brief": "系統の解説の中で、その系統の1足としてOLD ORDERを紹介"},
+        ],
+        "shared": ["care"],
+        "visual": "イラスト＋コラージュ。人物は描かず靴と服だけ",
+    },
+}
