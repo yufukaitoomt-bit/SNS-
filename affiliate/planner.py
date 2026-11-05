@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 from .accounts import ACCOUNTS, BIO_FOOTER, OO_DISCLOSURE, PLATFORMS, SHARED_POSTS
 from .generator import URL_PLACEHOLDER, WEEKDAYS, _points, _usable, hashtags, product_vars
 from .library import ANGLES, DISCLOSURE
+from .theme_content import THEME_CONTENT
 
 LINKS_FILE = Path(__file__).parent / "data" / "account_links.json"
 
@@ -62,6 +63,14 @@ def _oo_caption(platform: str, hook: str, points: List[str], v: dict, p: dict, a
         lines.append(f"※{p['shipping_note']}")
     lines += ["商品ページはプロフィールのリンクから", "", " ".join(hashtags(p, angle_key))]
     return "\n".join(lines)
+
+
+def _theme_caption(platform: str, account: dict, c: dict) -> str:
+    """theme_content の完成原稿を各SNS向けに。OLD ORDERは出ないので広告表示なし。"""
+    tags = " ".join(ANGLES[account["angles"][0]]["tags"][:3])
+    if platform == "X":
+        return "\n".join([c["title"], ""] + [f"・{p}" for p in c["points"][:3]] + ["", tags])
+    return "\n".join([c["title"], ""] + [f"・{p}" for p in c["points"]] + ["", c["end"], "", tags])
 
 
 def _draft_caption(platform: str, account: dict, post: dict) -> str:
@@ -113,17 +122,21 @@ def plan_week(account_id: str, product: dict, start: date, week_index: int = 0,
                     "date": label, "account": account_id, "account_name": a["name"], "platform": pl,
                     "type": post["label"], "oo": "○", "format": FORMAT[pl], "brief": post["brief"],
                     "caption": _oo_caption(pl, hook, points, v, product, angle_key, link),
-                    "disclosure": OO_DISCLOSURE_SETTING[pl],
+                    "disclosure": OO_DISCLOSURE_SETTING[pl], "ready": "○",
                 })
             continue
         post = SHARED_POSTS["care"] if d == care_day else normal[ni % len(normal)]
+        key = "care" if d == care_day else post["key"]
         if d != care_day:
             ni += 1
+        written = THEME_CONTENT.get(key)
+        content = written[week_index % len(written)] if written else None
         for pl in PLATFORMS:
             rows.append({
                 "date": label, "account": account_id, "account_name": a["name"], "platform": pl,
                 "type": post["label"], "oo": "", "format": FORMAT[pl], "brief": post["brief"],
-                "caption": _draft_caption(pl, a, post), "disclosure": "",
+                "caption": _theme_caption(pl, a, content) if content else _draft_caption(pl, a, post),
+                "disclosure": "", "ready": "○" if content else "",
             })
     return rows
 
@@ -137,7 +150,7 @@ def plan_all(product: dict, start: date, week_index: int = 0, account_ids: Optio
 
 
 COLUMNS = [("date", "日付"), ("account_name", "アカウント"), ("platform", "SNS"), ("type", "投稿の型"),
-           ("oo", "OLD ORDER"), ("format", "形式"), ("brief", "ネタ・指示"), ("caption", "投稿文"),
+           ("oo", "OLD ORDER"), ("ready", "完成"), ("format", "形式"), ("brief", "ネタ・指示"), ("caption", "投稿文"),
            ("disclosure", "広告表示の設定")]
 
 

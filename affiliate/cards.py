@@ -113,6 +113,10 @@ def _slides_content(row: dict) -> dict:
         points = [x[1:] for x in lines if x.startswith("・")]
         product_line = next((x for x in lines if "OLD ORDER" in x and "¥" in x), "")
         return {"cover": hook, "body": points or [row["type"]], "end": product_line, "draft": False}
+    if row.get("ready"):  # テーマ回の完成原稿: 1行目=タイトル、・=中身、最後の文=まとめ
+        body = [x[1:] for x in lines if x.startswith("・")]
+        rest = [x for x in lines[1:] if not x.startswith("・") and not x.startswith("#")]
+        return {"cover": lines[0], "body": body, "end": rest[-1] if rest else "", "draft": False}
     return {"cover": row["type"], "body": [row["brief"]], "end": "保存してあとで見返してね", "draft": True}
 
 
@@ -131,7 +135,7 @@ def render_post(row: dict, product: dict, out_dir: Path, stem: str) -> List[Path
             d.text((W / 2, H - 110), "→ スワイプ", font=_font(40), fill=style["accent"], anchor="mm")
         elif page == 2:
             y = 220
-            for pt in c["body"][:4]:
+            for pt in c["body"][:5]:
                 d.rounded_rectangle([90, y, W - 90, y + 8], radius=4, fill=style["accent"])
                 y = _text_block(d, style, pt, y + 40, 50) + 40
         else:
