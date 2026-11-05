@@ -9,13 +9,14 @@
   python -m affiliate.cli activate oldorder-turbo-gt              # 今週売る商品を切り替え
   python -m affiliate.cli outreach --commission 12 --sender 山田     # クリエイター依頼セット
   python -m affiliate.cli plan --start 2026-11-09                   # テーマ別アカウント9つの1週間分
+  python -m affiliate.cli cards --start 2026-11-09 --only-oo        # その画像（3枚）とスライド動画
 """
 import argparse
 from datetime import date, timedelta
 from pathlib import Path
 
 from . import store
-from . import outreach, planner
+from . import cards, outreach, planner
 from .generator import generate_week, to_csv, to_markdown
 
 
@@ -52,6 +53,14 @@ def main():
     pl.add_argument("--week", type=int, default=0, help="何週目か（お手入れ回などの周期に使う）")
     pl.add_argument("--accounts", help="例: black,kstreet（省略時は全部）")
     pl.add_argument("--out", default="out")
+    cd = sub.add_parser("cards")
+    cd.add_argument("--product")
+    cd.add_argument("--start", required=True, help="開始日 YYYY-MM-DD")
+    cd.add_argument("--week", type=int, default=0)
+    cd.add_argument("--accounts", help="例: black,kstreet（省略時は全部）")
+    cd.add_argument("--only-oo", action="store_true", help="OLD ORDER回だけ作る（テーマ回は下書きを埋めてから）")
+    cd.add_argument("--no-video", action="store_true")
+    cd.add_argument("--out", default="out/cards")
     a = sub.add_parser("activate")
     a.add_argument("product")
     args = ap.parse_args()
@@ -97,6 +106,12 @@ def main():
         for aid in ids:
             (out / f"{aid}_{start.isoformat()}.md").write_text(planner.to_markdown(aid, rows), encoding="utf-8")
         print(f"✅ {len(ids)}アカウント・{len(rows)}件 → {out}/")
+    elif args.cmd == "cards":
+        p = store.get(args.product)
+        ids = args.accounts.split(",") if args.accounts else list(planner.ACCOUNTS)
+        rows = planner.plan_all(p, date.fromisoformat(args.start), args.week, ids)
+        n = cards.render_week(rows, p, Path(args.out), video=not args.no_video, only_oo=args.only_oo)
+        print(f"✅ {n}投稿ぶんの画像{'と動画' if not args.no_video else ''} → {args.out}/")
     elif args.cmd == "week":
         p = store.get(args.product)
         start = date.fromisoformat(args.start) if args.start else None
