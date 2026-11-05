@@ -50,7 +50,7 @@ OLD ORDER TURBO GT（¥24,200）
 韓国っぽコーデは足元で印象が変わる
 OLD ORDER TURBO GT（¥24,200）
 #オールドオーダー #TurboGT
-【URL未設定】
+https://shopa.jp/M43F9WRVC7WT
 ```
 ☑️ 【必須・唯一の広告表示】公開前に「有料パートナーシップ」ONを目視確認（公開前に確認）
 
@@ -168,7 +168,7 @@ OLD ORDER TURBO GT（¥24,200）
 韓国っぽい雰囲気のスニーカー、見つけた
 OLD ORDER TURBO GT（¥24,200）
 #オールドオーダー #TurboGT
-【URL未設定】
+https://shopa.jp/M43F9WRVC7WT
 ```
 ☑️ 【必須・唯一の広告表示】公開前に「有料パートナーシップ」ONを目視確認（公開前に確認）
 
@@ -226,7 +226,7 @@ OLD ORDER TURBO GT（¥24,200）
 ストリート好きが今気になってるスニーカー
 OLD ORDER TURBO GT（¥24,200）
 #オールドオーダー #TurboGT
-【URL未設定】
+https://shopa.jp/M43F9WRVC7WT
 ```
 ☑️ 【必須・唯一の広告表示】公開前に「有料パートナーシップ」ONを目視確認（公開前に確認）
 
@@ -341,7 +341,7 @@ OLD ORDER TURBO GT（¥24,200）
 韓国っぽコーデに合わせたいスニーカー、日本で買えるの知ってた？
 OLD ORDER TURBO GT（¥24,200）
 #オールドオーダー #TurboGT
-【URL未設定】
+https://shopa.jp/M43F9WRVC7WT
 ```
 ☑️ 【必須・唯一の広告表示】公開前に「有料パートナーシップ」ONを目視確認（公開前に確認）
 
@@ -399,7 +399,7 @@ OLD ORDER TURBO GT（¥24,200）
 オルチャンになりたいならスニーカーから変えて
 OLD ORDER TURBO GT（¥24,200）
 #オールドオーダー #TurboGT
-【URL未設定】
+https://shopa.jp/M43F9WRVC7WT
 ```
 ☑️ 【必須・唯一の広告表示】公開前に「有料パートナーシップ」ONを目視確認（公開前に確認）
 

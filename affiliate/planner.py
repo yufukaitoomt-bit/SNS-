@@ -35,7 +35,7 @@ OO_DISCLOSURE_SETTING = {
 
 
 def load_links() -> Dict[str, Dict[str, str]]:
-    """{アカウントID: {SNS: 専用リンク}}。会社から発行されたら data/account_links.json に入れる。"""
+    """{"default": 共通リンク, アカウントID: {SNS: 専用リンク}}。発行されたら data/account_links.json に入れる。"""
     if LINKS_FILE.exists():
         return json.loads(LINKS_FILE.read_text(encoding="utf-8"))
     return {}
@@ -117,7 +117,8 @@ def plan_week(account_id: str, product: dict, start: date, week_index: int = 0,
             used_hooks.add(hook)
             points = _points(ANGLES[angle_key], v) or [v["name"]]
             for pl in PLATFORMS:
-                link = links.get(account_id, {}).get(pl) or URL_PLACEHOLDER
+                # アカウント×SNSごとのリンクが無ければ共通リンク（default）。どこで売れたかは分からなくなる
+                link = links.get(account_id, {}).get(pl) or links.get("default") or URL_PLACEHOLDER
                 rows.append({
                     "date": label, "account": account_id, "account_name": a["name"], "platform": pl,
                     "type": post["label"], "oo": "○", "format": FORMAT[pl], "brief": post["brief"],
