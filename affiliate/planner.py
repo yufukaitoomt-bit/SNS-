@@ -26,7 +26,7 @@ FORMAT = {
 }
 OO_DISCLOSURE_SETTING = {
     "TikTok": DISCLOSURE["TikTok"],
-    "Instagram": "本文1行目の【PR】が広告表示（タイアップ投稿ラベルは提携先の設定が必要）",
+    "Instagram": "本文1行目の『OLD ORDERスタッフが紹介してます』が広告表示（消さない・後ろに回さない）",
     "X": DISCLOSURE["X"],
     "YouTube": DISCLOSURE["YouTubeショート"],
 }

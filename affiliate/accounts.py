@@ -2,7 +2,8 @@
 
 共通ルール（法務チェック済み）:
 - 架空の個人を装わない。中の人は「スタッフ（チーム）」
-- プロフィールに運用者を書く。OLD ORDERが出る投稿だけ、1行目に広告表示（OO_DISCLOSURE）
+- プロフィールに運用者を書く。OLD ORDERが出る投稿（専用リンク付き）だけ、1行目に自然な一文で広告表示（OO_DISCLOSURE）
+  ＋各SNSの広告表示の設定。#PRのハッシュタグは使わない（文言は自由、広告と分かれば足りる）
 - 他社の画像・ロゴは使わない（自分で撮影 or 各SNSの共有・引用機能）。他社を下げない
 - 体験していない体験談・根拠のない最上級・他店比較は書かない
 - 他社の情報（発売日・価格・イベント）は公式発表で確認してから出す → 下書きでは【要確認】
@@ -12,8 +13,8 @@ posts の oo=True はOLD ORDERを出す枠。oo_per_week は1週間（7投稿）
 
 PLATFORMS = ["TikTok", "Instagram", "X", "YouTube"]
 
-OO_DISCLOSURE = "【PR】OLD ORDERスタッフ運用"
-BIO_FOOTER = "OLD ORDERスタッフ（チーム）運用｜OLD ORDERの投稿は#PR"
+OO_DISCLOSURE = "OLD ORDERスタッフが紹介してます"
+BIO_FOOTER = "OLD ORDERスタッフ（チーム）運用｜OLD ORDERの紹介を含みます"
 
 # 全アカウント共通で、たまに入れる投稿の型
 SHARED_POSTS = {
