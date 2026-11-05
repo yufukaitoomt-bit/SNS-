@@ -25,12 +25,12 @@ FORMAT = {
     "X": "画像1枚＋本文",
     "YouTube": "ショート（画像スライド動画＋字幕・15秒）",
 }
-# 本文に広告表示を書かないので、この公式ラベルが唯一の広告表示。付け忘れ＝ステマ（責任はOLD ORDER）
+# 本文1行目の OO_DISCLOSURE（会社ルール）に加えて、各SNSの広告ラベルもONにする。公開は勤務時間外
 OO_DISCLOSURE_SETTING = {
-    "TikTok": "【必須・唯一の広告表示】公開前に「コンテンツの開示（ブランドコンテンツ）」ONを目視確認",
-    "Instagram": "【必須・唯一の広告表示】タイアップ投稿ラベルでOLD ORDER公式を提携先に指定。提携の承認前は本文1行目に『OLD ORDERスタッフが紹介してます』を入れる",
-    "X": "【必須・唯一の広告表示】公開前に「有料パートナーシップ」ONを目視確認",
-    "YouTube": "【必須・唯一の広告表示】公開前に「有料プロモーションを含む」ONを目視確認",
+    "TikTok": "1行目の「#PR OLD ORDERスタッフです」を消さない＋「コンテンツの開示（ブランドコンテンツ）」ON",
+    "Instagram": "1行目の「#PR OLD ORDERスタッフです」を消さない（タイアップ投稿ラベルは提携の承認後に）",
+    "X": "1行目の「#PR OLD ORDERスタッフです」を消さない＋「有料パートナーシップ」ON",
+    "YouTube": "1行目の「#PR OLD ORDERスタッフです」を消さない＋「有料プロモーションを含む」ON",
 }
 
 
@@ -52,13 +52,25 @@ def _oo_days(n: int, offset: int) -> List[int]:
     return sorted((d + offset) % 7 for d in base)
 
 
-def _oo_caption(platform: str, hook: str, points: List[str], v: dict, p: dict, angle_key: str, link: str) -> str:
+def coupon_line(p: dict, day: date, short: bool = False) -> str:
+    """商品データの coupon（期限内だけ）。条件も必ず一緒に書く（有利誤認を避ける）。"""
+    c = p.get("coupon") or {}
+    if not c.get("code") or day > date.fromisoformat(c["until"]):
+        return ""
+    return c["short"] if short else f"{c['text']}（{c['conditions']}）"
+
+
+def _oo_caption(platform: str, hook: str, points: List[str], v: dict, p: dict, angle_key: str, link: str,
+                day: date) -> str:
     price = f"（{v['price']}）" if v["price"] else ""
     if platform == "X":
         tags = " ".join(hashtags(p, angle_key)[:2])
-        return f"{hook}\n{v['full_name']}{price}\n{tags}\n{link}"
-    lines = [hook, ""] + [f"・{pt}" for pt in points[:3]]
+        lines = [OO_DISCLOSURE, hook, f"{v['full_name']}{price}", coupon_line(p, day, short=True), tags, link]
+        return "\n".join(x for x in lines if x)
+    lines = [OO_DISCLOSURE, hook, ""] + [f"・{pt}" for pt in points[:3]]
     lines += ["", f"{v['full_name']}{price}"]
+    if coupon_line(p, day):
+        lines.append(coupon_line(p, day))
     if p.get("shipping_note"):
         lines.append(f"※{p['shipping_note']}")
     lines += ["商品ページはプロフィールのリンクから", "", " ".join(hashtags(p, angle_key))]
@@ -122,7 +134,7 @@ def plan_week(account_id: str, product: dict, start: date, week_index: int = 0,
                 rows.append({
                     "date": label, "account": account_id, "account_name": a["name"], "platform": pl,
                     "type": post["label"], "oo": "○", "format": FORMAT[pl], "brief": post["brief"],
-                    "caption": _oo_caption(pl, hook, points, v, product, angle_key, link),
+                    "caption": _oo_caption(pl, hook, points, v, product, angle_key, link, day),
                     "disclosure": OO_DISCLOSURE_SETTING[pl], "ready": "○",
                 })
             continue

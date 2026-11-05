@@ -107,7 +107,8 @@ def _product_photo(im: Image.Image, style: dict, product: dict, box) -> None:
 
 def _slides_content(row: dict) -> dict:
     """投稿文（Instagram版）から 表紙・中身・まとめ の文字を取り出す。"""
-    lines = [x for x in row["caption"].split("\n") if x.strip()]
+    # 1行目の広告表示（#PR OLD ORDERスタッフです）は投稿文に残し、画像の表紙には使わない
+    lines = [x for x in row["caption"].split("\n") if x.strip() and not x.startswith("#PR")]
     if row["oo"]:
         hook = lines[0]
         points = [x[1:] for x in lines if x.startswith("・")]
@@ -143,6 +144,9 @@ def render_post(row: dict, product: dict, out_dir: Path, stem: str) -> List[Path
                 _product_photo(im, style, product, (190, 220, 890, 760))
                 _text_block(d, style, c["end"], 830, 50)
                 _text_block(d, style, "商品ページはプロフィールのリンクから", 1000, 42, style["accent"])
+                coupon = next((x for x in row["caption"].split("\n") if "KAITO3" in x or "クーポン" in x), "")
+                if coupon:
+                    _text_block(d, style, coupon.split("（")[0], 1110, 34)
             else:
                 _text_block(d, style, c["end"], 560, 56, style["accent"])
         if c["draft"]:

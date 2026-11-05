@@ -177,8 +177,9 @@ def generate_week(
     platforms で出す媒体を絞る（既定は TikTok と X）。
     pr_text=True でラベルが付く媒体の本文にも【PR】を入れる（既定はラベルのみ）。"""
     platforms = platforms or DEFAULT_PLATFORMS
-    tieup_line = tieup_line or f"※{product.get('brand', '')}の紹介プログラムに参加して紹介しています"
-    x_tieup_line = f"※{product.get('brand', '')}の紹介プログラム参加中"  # Xは文字数が厳しいので短く
+    # 会社のルール: 投稿には必ず「#PR」と「OLD ORDERスタッフです」
+    tieup_line = tieup_line or "#PR OLD ORDERスタッフです"
+    x_tieup_line = tieup_line
     if start is None:
         today = date.today()
         start = today + timedelta(days=(7 - today.weekday()) % 7 or 7)  # 次の月曜
