@@ -90,13 +90,21 @@ def _text_block(d, style, text: str, top: int, size: int, color=None, width: int
     return y
 
 
-def _product_photo(im: Image.Image, style: dict, product: dict, box) -> None:
+def _photo_variants(product: dict) -> List[Path]:
+    """data/photos/<商品ID>.png と <商品ID>_<カラー>.png（例: _allblack）を全部候補にする。"""
+    pid = product.get("id")
+    return sorted(p for p in PHOTO_DIR.glob(f"{pid}*") if p.suffix.lower() in (".png", ".jpg", ".jpeg"))
+
+
+def _product_photo(im: Image.Image, style: dict, product: dict, box, pick: int = 0) -> None:
     x0, y0, x1, y1 = box
-    for ext in ("png", "jpg", "jpeg"):
-        path = PHOTO_DIR / f"{product.get('id')}.{ext}"
+    variants = _photo_variants(product)
+    if variants:
+        path = variants[pick % len(variants)]
         if path.exists():
             photo = Image.open(path).convert("RGBA")
-            photo.thumbnail((x1 - x0, y1 - y0))
+            scale = min((x1 - x0) / photo.width, (y1 - y0) / photo.height)
+            photo = photo.resize((int(photo.width * scale), int(photo.height * scale)), Image.LANCZOS)
             im.paste(photo, (x0 + (x1 - x0 - photo.width) // 2, y0 + (y1 - y0 - photo.height) // 2), photo)
             return
     d = ImageDraw.Draw(im)  # 写真が届くまでは置き場所だけ描く
@@ -124,6 +132,7 @@ def _slides_content(row: dict) -> dict:
 def render_post(row: dict, product: dict, out_dir: Path, stem: str) -> List[Path]:
     style = STYLES[row["account"]]
     c = _slides_content(row)
+    pick = sum(map(ord, stem + row["account"]))  # カラー写真を投稿ごとに切り替える
     paths = []
     for page in (1, 2, 3):
         im = _background(style, f"{stem}-{page}")
@@ -132,7 +141,7 @@ def render_post(row: dict, product: dict, out_dir: Path, stem: str) -> List[Path
         if page == 1:
             _text_block(d, style, c["cover"], 300, 76)
             if row["oo"]:
-                _product_photo(im, style, product, (190, 700, 890, 1150))
+                _product_photo(im, style, product, (90, 680, 990, 1170), pick)
             d.text((W / 2, H - 110), "→ スワイプ", font=_font(40), fill=style["accent"], anchor="mm")
         elif page == 2:
             y = 220
@@ -141,7 +150,7 @@ def render_post(row: dict, product: dict, out_dir: Path, stem: str) -> List[Path
                 y = _text_block(d, style, pt, y + 40, 50) + 40
         else:
             if row["oo"]:
-                _product_photo(im, style, product, (190, 220, 890, 760))
+                _product_photo(im, style, product, (90, 200, 990, 760), pick)
                 _text_block(d, style, c["end"], 830, 50)
                 _text_block(d, style, "商品ページはプロフィールのリンクから", 1000, 42, style["accent"])
                 coupon = next((x for x in row["caption"].split("\n") if "KAITO3" in x or "クーポン" in x), "")

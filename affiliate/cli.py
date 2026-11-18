@@ -61,6 +61,7 @@ def main():
     cd.add_argument("--accounts", help="例: black,kstreet（省略時は全部）")
     cd.add_argument("--only-oo", action="store_true", help="OLD ORDER回だけ作る（テーマ回は下書きを埋めてから）")
     cd.add_argument("--no-video", action="store_true")
+    cd.add_argument("--ready-only", action="store_true", help="planと同じ。調べものが要る型を完成原稿に差し替える")
     cd.add_argument("--out", default="out/cards")
     a = sub.add_parser("activate")
     a.add_argument("product")
@@ -110,7 +111,7 @@ def main():
     elif args.cmd == "cards":
         p = store.get(args.product)
         ids = args.accounts.split(",") if args.accounts else list(planner.ACCOUNTS)
-        rows = planner.plan_all(p, date.fromisoformat(args.start), args.week, ids)
+        rows = planner.plan_all(p, date.fromisoformat(args.start), args.week, ids, ready_only=args.ready_only)
         n = cards.render_week(rows, p, Path(args.out), video=not args.no_video, only_oo=args.only_oo)
         print(f"✅ {n}投稿ぶんの画像{'と動画' if not args.no_video else ''} → {args.out}/")
     elif args.cmd == "week":
