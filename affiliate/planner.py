@@ -12,7 +12,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .accounts import ACCOUNTS, BIO_FOOTER, OO_DISCLOSURE, PLATFORMS, SHARED_POSTS
+from .accounts import (ACCOUNTS, BIO_FOOTER, OO_DISCLOSURE, PLATFORMS, POST_START, POST_STEP_ACCOUNT_MIN,
+                       POST_STEP_PLATFORM_MIN, SHARED_POSTS)
 from .generator import URL_PLACEHOLDER, WEEKDAYS, _points, _usable, hashtags, product_vars
 from .library import ANGLES, DISCLOSURE
 from .theme_content import THEME_CONTENT
@@ -92,8 +93,33 @@ def _draft_caption(platform: str, account: dict, post: dict) -> str:
     return f"{title}\n{post['brief']}\n\n（構成）1枚目: タイトル／2〜4枚目: 中身／5枚目: まとめ・保存のお願い"
 
 
+# 調べものが要る型の代わりに使う、他アカウントの完成原稿（テーマが近いもの）
+FALLBACK_THEMES = {
+    "zukan": ["trend", "silhouette"],
+    "atsuzoko": ["trend", "silhouette"],
+    "black": ["allblack", "trend"],
+    "weekend": ["items", "season", "color"],
+    "furugi": ["dig", "town"],
+    "kstreet": ["color", "trend"],
+    "oshikatsu": ["palette"],
+    "campus": ["palette", "silhouette"],
+    "ashimoto": ["silhouette", "palette"],
+}
+THEME_LABELS = {"trend": "系統の解説", "silhouette": "シルエット研究", "allblack": "黒×黒コーデ", "items": "持ち物リスト",
+                "season": "季節の服", "color": "推し色・差し色", "dig": "古着の見方", "town": "街っぽい足元",
+                "palette": "配色研究", "care": "お手入れ"}
+
+
+def post_time(account_id: str, platform: str) -> str:
+    h, m = map(int, POST_START.split(":"))
+    total = h * 60 + m + list(ACCOUNTS).index(account_id) * POST_STEP_ACCOUNT_MIN \
+        + PLATFORMS.index(platform) * POST_STEP_PLATFORM_MIN
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
 def plan_week(account_id: str, product: dict, start: date, week_index: int = 0,
-              links: Optional[Dict[str, Dict[str, str]]] = None) -> List[dict]:
+              links: Optional[Dict[str, Dict[str, str]]] = None, ready_only: bool = False) -> List[dict]:
+    """ready_only=True: 調べものが要る型（完成原稿が無い型）を、完成原稿がある型に差し替える。"""
     a = ACCOUNTS[account_id]
     links = links if links is not None else load_links()
     offset = list(ACCOUNTS).index(account_id)
@@ -108,7 +134,7 @@ def plan_week(account_id: str, product: dict, start: date, week_index: int = 0,
     care_day = next((d for d in range(7) if d not in oo_days and (d + week_index) % 7 == 5), None) \
         if "care" in a["shared"] and (week_index + offset) % 2 == 0 else None
 
-    rows, used_hooks, ni, oi = [], set(), week_index, week_index
+    rows, used_hooks, used_titles, ni, oi = [], set(), set(), week_index, week_index
     for d in range(7):
         day = start + timedelta(days=d)
         label = f"{day.isoformat()}({WEEKDAYS[day.weekday()]})"
@@ -135,7 +161,7 @@ def plan_week(account_id: str, product: dict, start: date, week_index: int = 0,
                     "date": label, "account": account_id, "account_name": a["name"], "platform": pl,
                     "type": post["label"], "oo": "○", "format": FORMAT[pl], "brief": post["brief"],
                     "caption": _oo_caption(pl, hook, points, v, product, angle_key, link, day),
-                    "disclosure": OO_DISCLOSURE_SETTING[pl], "ready": "○",
+                    "disclosure": OO_DISCLOSURE_SETTING[pl], "ready": "○", "time": post_time(account_id, pl),
                 })
             continue
         post = SHARED_POSTS["care"] if d == care_day else normal[ni % len(normal)]
@@ -143,26 +169,39 @@ def plan_week(account_id: str, product: dict, start: date, week_index: int = 0,
         if d != care_day:
             ni += 1
         written = THEME_CONTENT.get(key)
-        content = written[week_index % len(written)] if written else None
+        content = written[(week_index + d) % len(written)] if written else None
+        if ready_only and (content is None or content["title"] in used_titles):
+            # 調べものが要る型・同じ週にもう出した原稿は、別の完成原稿に差し替える
+            cands = [x["key"] for x in normal if x["key"] in THEME_CONTENT] + FALLBACK_THEMES.get(account_id, []) + ["care"]
+            for k in cands:
+                c = next((c for c in THEME_CONTENT[k] if c["title"] not in used_titles), None)
+                if c:
+                    key, content = k, c
+                    post = next((x for x in normal if x["key"] == k), None) or SHARED_POSTS.get(k) \
+                        or {"key": k, "label": THEME_LABELS.get(k, k), "brief": "完成原稿"}
+                    break
+        if content:
+            used_titles.add(content["title"])
         for pl in PLATFORMS:
             rows.append({
                 "date": label, "account": account_id, "account_name": a["name"], "platform": pl,
                 "type": post["label"], "oo": "", "format": FORMAT[pl], "brief": post["brief"],
                 "caption": _theme_caption(pl, a, content) if content else _draft_caption(pl, a, post),
-                "disclosure": "", "ready": "○" if content else "",
+                "disclosure": "", "ready": "○" if content else "", "time": post_time(account_id, pl),
             })
     return rows
 
 
-def plan_all(product: dict, start: date, week_index: int = 0, account_ids: Optional[List[str]] = None) -> List[dict]:
+def plan_all(product: dict, start: date, week_index: int = 0, account_ids: Optional[List[str]] = None,
+             ready_only: bool = False) -> List[dict]:
     links = load_links()
     rows = []
     for aid in account_ids or list(ACCOUNTS):
-        rows += plan_week(aid, product, start, week_index, links)
+        rows += plan_week(aid, product, start, week_index, links, ready_only)
     return rows
 
 
-COLUMNS = [("date", "日付"), ("account_name", "アカウント"), ("platform", "SNS"), ("type", "投稿の型"),
+COLUMNS = [("date", "日付"), ("time", "公開時間"), ("account_name", "アカウント"), ("platform", "SNS"), ("type", "投稿の型"),
            ("oo", "OLD ORDER"), ("ready", "完成"), ("format", "形式"), ("brief", "ネタ・指示"), ("caption", "投稿文"),
            ("disclosure", "広告表示の設定")]
 
