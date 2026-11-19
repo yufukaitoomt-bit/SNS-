@@ -16,7 +16,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from . import store
-from . import cards, outreach, planner
+from . import cards, outreach, packs, planner
 from .generator import generate_week, to_csv, to_markdown
 
 
@@ -63,6 +63,13 @@ def main():
     cd.add_argument("--no-video", action="store_true")
     cd.add_argument("--ready-only", action="store_true", help="planと同じ。調べものが要る型を完成原稿に差し替える")
     cd.add_argument("--out", default="out/cards")
+    pk = sub.add_parser("packs")
+    pk.add_argument("--product")
+    pk.add_argument("--start", required=True)
+    pk.add_argument("--week", type=int, default=0)
+    pk.add_argument("--accounts")
+    pk.add_argument("--platforms", default="TikTok,X", help="まとめるSNS（既定: 手で予約するTikTokとX）")
+    pk.add_argument("--out", default="out/packs")
     a = sub.add_parser("activate")
     a.add_argument("product")
     args = ap.parse_args()
@@ -114,6 +121,17 @@ def main():
         rows = planner.plan_all(p, date.fromisoformat(args.start), args.week, ids, ready_only=args.ready_only)
         n = cards.render_week(rows, p, Path(args.out), video=not args.no_video, only_oo=args.only_oo)
         print(f"✅ {n}投稿ぶんの画像{'と動画' if not args.no_video else ''} → {args.out}/")
+    elif args.cmd == "packs":
+        p = store.get(args.product)
+        ids = args.accounts.split(",") if args.accounts else list(planner.ACCOUNTS)
+        rows = planner.plan_all(p, date.fromisoformat(args.start), args.week, ids, ready_only=True)
+        rows = [r for r in rows if r["platform"] in args.platforms.split(",")]
+        cards_dir = Path("out/cards") / f"week_{args.start}"
+        if not cards_dir.exists():
+            cards.render_week(planner.plan_all(p, date.fromisoformat(args.start), args.week, ids, ready_only=True),
+                              p, cards_dir)
+        n = packs.build(rows, cards_dir, Path(args.out) / f"week_{args.start}")
+        print(f"✅ {n}件の予約用フォルダ → {args.out}/week_{args.start}/")
     elif args.cmd == "week":
         p = store.get(args.product)
         start = date.fromisoformat(args.start) if args.start else None
