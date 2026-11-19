@@ -15,6 +15,10 @@ posts の oo=True はOLD ORDERを出す枠。oo_per_week は1週間（7投稿）
 PLATFORMS = ["TikTok", "Instagram", "X", "YouTube"]
 
 # 公開時間（会社のルール: 投稿は仕事が終わってから）。アカウントごとに15分、SNSごとに5分ずらす
+# 投稿計画の週の区切り（この日を week=1 の初日として7日ごと）。自動投稿もこれで今日の投稿を探す
+PLAN_ANCHOR = "2026-11-19"
+PLAN_ANCHOR_WEEK = 1
+
 POST_START = "19:30"
 POST_STEP_ACCOUNT_MIN = 15
 POST_STEP_PLATFORM_MIN = 5

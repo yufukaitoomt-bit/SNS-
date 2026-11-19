@@ -1,0 +1,47 @@
+name: Instagram 自動投稿
+
+on:
+  schedule:
+    # 日本時間 19:00〜22:45 に15分おき（各アカウントの公開時間を過ぎたら投稿。投稿済みなら何もしない）
+    - cron: "*/15 10-13 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "投稿せずに確認だけする"
+        type: boolean
+        default: true
+
+concurrency:
+  group: instagram-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 日本語フォントとffmpeg
+        run: sudo apt-get update -q && sudo apt-get install -y -q fonts-ipafont-gothic ffmpeg
+      - name: ライブラリ
+        run: pip install -q Pillow httpx
+      - name: 投稿
+        env:
+          IG_TOKEN_BLACK: ${{ secrets.IG_TOKEN_BLACK }}
+          IG_TOKEN_KSTREET: ${{ secrets.IG_TOKEN_KSTREET }}
+          IG_TOKEN_ZUKAN: ${{ secrets.IG_TOKEN_ZUKAN }}
+          IG_TOKEN_ATSUZOKO: ${{ secrets.IG_TOKEN_ATSUZOKO }}
+          IG_TOKEN_WEEKEND: ${{ secrets.IG_TOKEN_WEEKEND }}
+          IG_TOKEN_FURUGI: ${{ secrets.IG_TOKEN_FURUGI }}
+          IG_TOKEN_OSHIKATSU: ${{ secrets.IG_TOKEN_OSHIKATSU }}
+          IG_TOKEN_CAMPUS: ${{ secrets.IG_TOKEN_CAMPUS }}
+          IG_TOKEN_ASHIMOTO: ${{ secrets.IG_TOKEN_ASHIMOTO }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            python -m affiliate.publish_instagram --dry-run
+          else
+            python -m affiliate.publish_instagram
+          fi
