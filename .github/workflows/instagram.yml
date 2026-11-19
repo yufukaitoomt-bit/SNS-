@@ -39,6 +39,15 @@ jobs:
           IG_TOKEN_OSHIKATSU: ${{ secrets.IG_TOKEN_OSHIKATSU }}
           IG_TOKEN_CAMPUS: ${{ secrets.IG_TOKEN_CAMPUS }}
           IG_TOKEN_ASHIMOTO: ${{ secrets.IG_TOKEN_ASHIMOTO }}
+          IG_USER_ID_BLACK: ${{ secrets.IG_USER_ID_BLACK }}
+          IG_USER_ID_KSTREET: ${{ secrets.IG_USER_ID_KSTREET }}
+          IG_USER_ID_ZUKAN: ${{ secrets.IG_USER_ID_ZUKAN }}
+          IG_USER_ID_ATSUZOKO: ${{ secrets.IG_USER_ID_ATSUZOKO }}
+          IG_USER_ID_WEEKEND: ${{ secrets.IG_USER_ID_WEEKEND }}
+          IG_USER_ID_FURUGI: ${{ secrets.IG_USER_ID_FURUGI }}
+          IG_USER_ID_OSHIKATSU: ${{ secrets.IG_USER_ID_OSHIKATSU }}
+          IG_USER_ID_CAMPUS: ${{ secrets.IG_USER_ID_CAMPUS }}
+          IG_USER_ID_ASHIMOTO: ${{ secrets.IG_USER_ID_ASHIMOTO }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
             python -m affiliate.publish_instagram --dry-run
