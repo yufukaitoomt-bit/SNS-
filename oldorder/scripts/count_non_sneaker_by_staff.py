@@ -1,147 +1,174 @@
 #!/usr/bin/env python3
-"""11/1-11/26 スタッフ別「スニーカー以外」販売点数カウント
+"""スタッフ別「スニーカー以外」販売点数カウント（スマレジ取引履歴CSV）
 
-使い方:  python3 count_non_sneaker_by_staff.py <取引明細CSV> [<CSV2> ...]
+使い方: python3 count_non_sneaker_by_staff.py <取引履歴CSV> [--from YYYY-MM-DD] [--to YYYY-MM-DD]
 
-スマレジの取引履歴CSV（明細あり）を想定。列名は自動判定する。
-ラッピング（その他（売上対象外））は除外。
+想定入力: スマレジ管理画面の取引履歴CSV（60列・取引明細付き・UTF-8 BOM）
+除外: 取引区分1以外（ポイント加算/減算/失効）、取消区分1、ショッパー・送料・ラッピング
 """
-import csv, sys, io, re
+import csv, sys, io, argparse
 from collections import defaultdict
 
-FROM_DATE, TO_DATE = "2026-11-01", "2026-11-26"
+STORE = {"1": "裏原", "3": "大阪南堀江", "6": "原宿明治通り", "8": "名古屋PARCO"}
 
-# 非スニーカー部門（既存データ 7/16-10/17 の実績から）
+# 「スニーカー以外」として数える部門
 NON_SNEAKER = {
-    "アクセサリーズ", "アパレル", "トップス", "ボトムス",
-    "OLDORDER SELECT", "MYSTERY BOX", "3D printer accessories",
+    "フットウェア",            # 靴下・レッグウォーマー
+    "アクセサリーズ",          # 靴紐・シュークリップ・ミニバッグ
+    "OLDORDER SELECT",        # アパレル（キャップ/フーディ/スウェット等）
+    "OverTure select",        # アパレル
+    "OVC",                    # アパレル（ヴィンテージフーディ等）
+    "Lighter",                # ライター
+    "トップス", "ボトムス", "アパレル",
+    "MYSTERY BOX", "3D printer accessories",
 }
-# 集計から完全に除外（商品ではない）
-EXCLUDE = {"その他（売上対象外）", "その他(売上対象外)"}
-EXCLUDE_NAME_RE = re.compile(r"gift\s*wrapping|ラッピング|ギフト包装", re.I)
-
-ALIASES = {
-    "date":  ["取引日", "取引日時", "売上日", "日付", "日時", "取引年月日"],
-    "store": ["店舗名", "店舗", "店舗コード", "店"],
-    "staff": ["担当者名", "担当者", "スタッフ名", "スタッフ", "販売員", "担当スタッフ"],
-    "dept":  ["部門名", "部門", "カテゴリ", "カテゴリー"],
-    "name":  ["商品名", "商品", "品名"],
-    "qty":   ["数量", "販売点数", "個数", "点数", "売上数量"],
+# 部門「その他（売上対象外）」のうち、商品ではないもの＝完全除外
+NOT_MERCH = {
+    "ショッパーS", "ショッパーL",
+    "【OLDORDER】Gift Wrapping",
+    "送料（本州・四国）", "送料（沖縄）",
 }
+# 同部門だが実体は商品（バッグ類）。本集計とは別枠で出す
+BAGS = {"Osaka limited Knapsack", "【OLDORDER】ORIGINAL SHOPPINGBAG"}
+OTHER_DEPT = {"その他（売上対象外）", "その他(売上対象外)"}
 
-def pick(fields, keys):
-    norm = {(f or "").strip().lstrip("﻿"): f for f in fields}
-    for k in keys:
-        if k in norm:
-            return norm[k]
-    for k in keys:                      # 部分一致フォールバック
-        for f in norm:
-            if k and k in f:
-                return norm[f]
-    return None
 
-def read_rows(path):
+def load(path):
     raw = open(path, "rb").read()
     for enc in ("utf-8-sig", "cp932", "utf-8"):
         try:
-            text = raw.decode(enc)
-            break
+            txt = raw.decode(enc); break
         except UnicodeDecodeError:
             continue
     else:
         raise SystemExit(f"{path}: 文字コードを判定できません")
-    rdr = csv.DictReader(io.StringIO(text), skipinitialspace=True)
-    return list(rdr), (rdr.fieldnames or []), enc
+    rdr = csv.reader(io.StringIO(txt))
+    hdr = next(rdr)
+    return [dict(zip(hdr, r)) for r in rdr if r], hdr, enc
 
-def norm_date(v):
-    m = re.search(r"(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})", v or "")
-    return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}" if m else None
 
-def main(paths):
-    by_staff = defaultdict(lambda: defaultdict(int))   # (店, 担当者) -> 部門 -> 点数
-    by_item  = defaultdict(int)
-    sneaker  = defaultdict(int)
-    unknown_depts, skipped, total_rows = defaultdict(int), 0, 0
+def col(hdr, idx):
+    return hdr[idx - 1]
 
-    for path in paths:
-        rows, fields, enc = read_rows(path)
-        cols = {k: pick(fields, v) for k, v in ALIASES.items()}
-        print(f"[{path}] {enc} / {len(rows)}行")
-        for k, v in cols.items():
-            print(f"    {k:6} -> {v!r}")
-        missing = [k for k in ("date", "staff", "qty") if not cols[k]]
-        if missing:
-            print(f"  !! 必須列が見つかりません: {missing}\n     ヘッダー: {fields}")
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("csv")
+    ap.add_argument("--from", dest="d_from", default="2026-11-01")
+    ap.add_argument("--to", dest="d_to", default="2026-11-26")
+    a = ap.parse_args()
+
+    rows, hdr, enc = load(a.csv)
+    if len(hdr) < 60:
+        raise SystemExit(f"列数が{len(hdr)}しかありません。取引明細付きのCSVが必要です。\nヘッダー: {hdr}")
+    C = {k: col(hdr, i) for k, i in dict(
+        kind=3, cancel=4, store=26, staff_id=36, staff=37,
+        dt=2, line=45, code=47, name=48, qty=54, amt=57, dept=60).items()}
+
+    ns = defaultdict(lambda: defaultdict(int))   # (店,担当) -> 部門 -> 点数
+    sn = defaultdict(int)                        # (店,担当) -> スニーカー点数
+    item = defaultdict(int)
+    bags = defaultdict(int)
+    unknown = defaultdict(int)
+    returns, dropped_kind, out_of_range, total = 0, 0, 0, 0
+
+    for r in rows:
+        total += 1
+        if r[C["kind"]] != "1":
+            dropped_kind += 1; continue
+        if r[C["cancel"]] == "1":
             continue
-        print()
+        d = (r[C["dt"]] or "")[:10].replace("/", "-")
+        if not (a.d_from <= d <= a.d_to):
+            out_of_range += 1; continue
+        try:
+            q = int(float(r[C["qty"]] or 0))
+        except ValueError:
+            q = 0
+        if r[C["line"]] == "2":                  # 返品行は減算
+            q = -abs(q); returns += 1
+        if q == 0:
+            continue
 
-        for r in rows:
-            total_rows += 1
-            nm = (r.get(cols["name"]) or "").strip() if cols["name"] else ""
-            if nm == "合計":
-                continue
-            d = norm_date(r.get(cols["date"], ""))
-            if not d or not (FROM_DATE <= d <= TO_DATE):
-                skipped += 1
-                continue
-            dept = (r.get(cols["dept"]) or "").strip() if cols["dept"] else ""
-            if dept in EXCLUDE or EXCLUDE_NAME_RE.search(nm):
-                continue
-            try:
-                q = int(float((r.get(cols["qty"]) or "0").replace(",", "")))
-            except ValueError:
-                q = 0
-            if q <= 0:
-                continue
-            store = (r.get(cols["store"]) or "-").strip() if cols["store"] else "-"
-            staff = (r.get(cols["staff"]) or "(未設定)").strip() or "(未設定)"
+        dept = (r[C["dept"]] or "").strip()
+        name = (r[C["name"]] or "").strip()
+        store = STORE.get((r[C["store"]] or "").strip(), f"店舗ID{r[C['store']]}")
+        staff = (r[C["staff"]] or "").strip() or "(未設定)"
 
-            if dept in NON_SNEAKER:
-                by_staff[(store, staff)][dept] += q
-                by_item[(dept, nm)] += q
-            else:
-                sneaker[(store, staff)] += q
-                if dept and dept not in NON_SNEAKER:
-                    unknown_depts[dept] += q
+        if dept in OTHER_DEPT:
+            if name in NOT_MERCH:
+                continue
+            if name in BAGS:
+                bags[(store, staff, name)] += q
+                continue
+            unknown[(dept, name)] += q
+            continue
+        if not dept:
+            unknown[("(部門空欄)", name)] += q
+            continue
 
-    print("=" * 78)
-    print(f"■ スニーカー以外の販売点数（{FROM_DATE}〜{TO_DATE}・ラッピング除外）")
-    print("=" * 78)
-    print(f"{'店':14} {'担当者':14} {'非スニーカー':>10} {'スニーカー':>10} {'構成比':>8}")
-    rank = sorted(by_staff.items(), key=lambda x: -sum(x[1].values()))
-    tot_n = tot_s = 0
-    for (store, staff), depts in rank:
-        n = sum(depts.values()); s = sneaker.get((store, staff), 0)
-        tot_n += n; tot_s += s
-        share = f"{n/(n+s)*100:.1f}%" if (n + s) else "-"
-        print(f"{store:14} {staff:14} {n:>10} {s:>10} {share:>8}")
-    for key, s in sorted(sneaker.items(), key=lambda x: -x[1]):
-        if key not in by_staff:
-            tot_s += s
-            print(f"{key[0]:14} {key[1]:14} {0:>10} {s:>10} {'0.0%':>8}")
-    print("-" * 78)
-    sh = f"{tot_n/(tot_n+tot_s)*100:.1f}%" if (tot_n + tot_s) else "-"
-    print(f"{'合計':14} {'':14} {tot_n:>10} {tot_s:>10} {sh:>8}")
+        if dept in NON_SNEAKER:
+            ns[(store, staff)][dept] += q
+            item[(dept, name)] += q
+        else:
+            sn[(store, staff)] += q
 
-    print(f"\n■ 部門別")
+    W = 86
+    print("=" * W)
+    print(f"■ スニーカー以外の販売点数　{a.d_from} 〜 {a.d_to}（ラッピング・ショッパー・送料は除外）")
+    print("=" * W)
+    print(f"{'店':12} {'担当者':14} {'非スニーカー':>10} {'スニーカー':>10} {'計':>7} {'非スニ比率':>9}")
+    print("-" * W)
+    keys = set(ns) | set(sn)
+    tn = ts = 0
+    for k in sorted(keys, key=lambda x: (-sum(ns[x].values()), -sn[x])):
+        n, s = sum(ns[k].values()), sn[k]
+        tn += n; ts += s
+        sh = f"{n/(n+s)*100:.1f}%" if (n + s) else "-"
+        print(f"{k[0]:12} {k[1]:14} {n:>10} {s:>10} {n+s:>7} {sh:>9}")
+    print("-" * W)
+    sh = f"{tn/(tn+ts)*100:.1f}%" if (tn + ts) else "-"
+    print(f"{'合計':12} {'':14} {tn:>10} {ts:>10} {tn+ts:>7} {sh:>9}")
+
+    print(f"\n■ 店別")
+    st = defaultdict(lambda: [0, 0])
+    for k in keys:
+        st[k[0]][0] += sum(ns[k].values()); st[k[0]][1] += sn[k]
+    for s_, (n, sv) in sorted(st.items(), key=lambda x: -x[1][0]):
+        r_ = f"{n/(n+sv)*100:.1f}%" if (n + sv) else "-"
+        print(f"  {s_:14} 非スニーカー {n:>4} / スニーカー {sv:>4} / 比率 {r_:>7}")
+
+    print(f"\n■ 部門別（非スニーカー）")
     agg = defaultdict(int)
-    for depts in by_staff.values():
-        for d, q in depts.items():
-            agg[d] += q
-    for d, q in sorted(agg.items(), key=lambda x: -x[1]):
-        print(f"  {d:28} {q:>5}")
+    for v in ns.values():
+        for d_, q in v.items():
+            agg[d_] += q
+    for d_, q in sorted(agg.items(), key=lambda x: -x[1]):
+        print(f"  {d_:26} {q:>4}")
 
-    print(f"\n■ 商品別")
-    for (d, nm), q in sorted(by_item.items(), key=lambda x: -x[1]):
-        print(f"  {d:22} | {nm[:48]:50} {q:>4}")
+    print(f"\n■ 商品別（非スニーカー）")
+    for (d_, nm), q in sorted(item.items(), key=lambda x: -x[1]):
+        print(f"  {q:>4}  [{d_}] {nm[:54]}")
 
-    if unknown_depts:
-        print(f"\n■ スニーカー側に入れた部門（確認用。非スニーカーならリストに追加）")
-        for d, q in sorted(unknown_depts.items(), key=lambda x: -x[1])[:40]:
-            print(f"  {d:28} {q:>5}")
-    print(f"\n(読込{total_rows}行 / 期間外{skipped}行)")
+    if bags:
+        print(f"\n■ 別枠：部門「その他（売上対象外）」にあるが商品のもの（含めるか要判断）")
+        bs = defaultdict(int)
+        for (s_, st_, nm), q in bags.items():
+            bs[nm] += q
+        for nm, q in sorted(bs.items(), key=lambda x: -x[1]):
+            print(f"  {q:>4}  {nm}")
+        print(f"  → 合計 {sum(bs.values())}点。含めると非スニーカーは {tn + sum(bs.values())}点")
+        print(f"\n  担当者別の内訳")
+        for (s_, st_, nm), q in sorted(bags.items(), key=lambda x: -x[1]):
+            print(f"    {s_:12} {st_:14} {nm[:34]:36} {q:>4}")
+
+    if unknown:
+        print(f"\n■ 判定できなかった商品（確認用）")
+        for (d_, nm), q in sorted(unknown.items(), key=lambda x: -x[1]):
+            print(f"  {q:>4}  [{d_}] {nm[:54]}")
+
+    print(f"\n(全{total}行 / 通常取引以外を除外{dropped_kind}行 / 期間外{out_of_range}行 / 返品{returns}行)")
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        raise SystemExit(__doc__)
-    main(sys.argv[1:])
+    main()
